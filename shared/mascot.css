@@ -1,0 +1,27 @@
+/* 团子猫的动作（U3）：放在 class="mascot play" 里播一次；去掉 play 就是静止的。减少动画时 tokens.css 统一关掉 */
+.mascot svg { width: 100%; height: 100%; display: block; overflow: visible; }
+.mascot :is(.bell, .waves, .body, .hand, .arms, .mouth, .stars, .zz text) { transform-box: fill-box; }
+.mascot .bell { transform-origin: 50% 0%; }
+.mascot.play .ring .bell { animation: swing .9s ease-in-out 1; }
+.mascot.play .ring .waves { animation: wave 0.9s ease-out 1; }
+@keyframes swing { 0%,100% { transform: rotate(0); } 15% { transform: rotate(22deg); } 35% { transform: rotate(-20deg); } 55% { transform: rotate(14deg); } 75% { transform: rotate(-8deg); } }
+@keyframes wave { 0% { opacity: 0; transform: scale(.7); } 30% { opacity: 1; } 100% { opacity: 1; transform: scale(1); } }
+.mascot .waves { transform-origin: 50% 50%; }
+.mascot.play .worry .body { animation: shake .5s ease-in-out 2; }
+@keyframes shake { 0%,100% { transform: translateX(0); } 25% { transform: translateX(-2.5px); } 75% { transform: translateX(2.5px); } }
+.mascot.play .sleep .zz text { animation: zz 2.4s ease-in-out infinite; }
+.mascot.play .sleep .zz text:nth-child(2) { animation-delay: .6s; }
+@keyframes zz { 0% { opacity: 0; transform: translate(0, 6px); } 40% { opacity: 1; } 100% { opacity: 0; transform: translate(4px, -8px); } }
+.mascot.play .happy .body { animation: hop .55s cubic-bezier(.2,.8,.2,1) 1; transform-origin: 50% 100%; }
+@keyframes hop { 0% { transform: translateY(0) scale(1, 1); } 25% { transform: translateY(0) scale(1.05, .93); } 55% { transform: translateY(-12px) scale(.97, 1.04); } 100% { transform: translateY(0) scale(1, 1); } }
+.mascot.play .happy .stars { animation: wave .55s ease-out 1; }
+.mascot.play .stretch .body { animation: stretch 1.4s ease-in-out 1; transform-origin: 50% 100%; }
+@keyframes stretch { 0%,100% { transform: scale(1, 1); } 45%,70% { transform: scale(.96, 1.08); } }
+.mascot.play .stretch .arms { animation: arms 1.4s ease-in-out 1; transform-origin: 50% 100%; }
+@keyframes arms { 0%,100% { transform: translateY(8px); opacity: .0; } 30%,75% { transform: translateY(0); opacity: 1; } }
+.mascot .stretch .arms { opacity: 1; }
+.mascot.play .yawn .mouth { animation: yawn 1.6s ease-in-out 1; transform-origin: 50% 0%; }
+@keyframes yawn { 0% { transform: scale(.3); } 40%,70% { transform: scale(1.05); } 100% { transform: scale(1); } }
+.mascot .hand { transform-origin: 20% 90%; }
+.mascot.play .wave .hand { animation: hand .5s ease-in-out 3 alternate; }
+@keyframes hand { 0% { transform: rotate(-14deg); } 100% { transform: rotate(16deg); } }

@@ -1,0 +1,136 @@
+/* 排好版的笔记（shared/md.ts 的 renderMd 画出来的）：包在 .dmd 里。照设计稿 U7，只用 tokens.css 的变量。
+   用在：编辑器里的表格（lib/livedeco.ts）、笔记窗口的「对照着看」、主窗口的笔记本 */
+
+.dmd { font-size: calc(14px * var(--fs)); line-height: 1.85; overflow-wrap: anywhere; color: var(--ink); }
+.dmd h5 { font-size: calc(16px * var(--fs)); font-weight: 700; margin: 12px 0 2px; }
+.dmd p { margin: 0 0 6px; }
+.dmd ul, .dmd ol { padding-left: 20px; margin: 0 0 6px; }
+.dmd ul.todo { list-style: none; padding-left: 0; }
+.dmd ul.todo li { display: flex; gap: 8px; align-items: center; min-height: 26px; }
+.dmd ul.todo .box { width: 17px; height: 17px; border: 1.6px solid var(--line-2); border-radius: 5px; background: var(--surf); flex: none; cursor: pointer; position: relative; transition: background var(--t-fast) var(--ease); }
+.dmd ul.todo .box:hover { border-color: var(--accent); }
+.dmd ul.todo li.checked .box { background: var(--accent); border-color: var(--accent); }
+.dmd ul.todo li.checked .box::after { content: ""; position: absolute; left: 4.5px; top: 1.5px; width: 4px; height: 8px; border: solid var(--on-accent); border-width: 0 2px 2px 0; rotate: 45deg; }
+.dmd ul.todo li.checked .tt { color: var(--ink-3); text-decoration: line-through; }
+.dmd ul.todo .tt { min-width: 0; }
+.dmd blockquote { margin: 0 0 6px; padding-left: 12px; border-left: 3px solid var(--line-2); color: var(--ink-2); }
+.dmd code { font-family: var(--f-mono); font-size: calc(12.5px * var(--fs)); background: var(--surf-2); box-shadow: 0 0 0 1px var(--line); border-radius: var(--r-xs); padding: 1px 5px; }
+.dmd mark { background: color-mix(in srgb, var(--tc-amber) 30%, transparent); color: inherit; border-radius: 2px; padding: 0 1px; }
+.dmd .lnk { color: var(--accent-ink); text-decoration: none; border-bottom: 1px solid color-mix(in srgb, var(--accent) 35%, transparent); cursor: pointer; }
+.dmd .lnkw { white-space: nowrap; }
+.dmd .lnk svg { width: 11px; height: 11px; margin-left: 1px; vertical-align: -1px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+
+/* 图片、文件 */
+.dmd p.att { margin: 6px 0; }
+.dmd p.att img { max-width: 100%; max-height: 380px; border-radius: var(--r-md); box-shadow: var(--sh-1); cursor: zoom-in; display: block; }
+.dmd p.att.wait img { display: none; }
+.dmd p.att.wait::after { content: "正在下载图片…"; display: grid; place-items: center; width: 260px; max-width: 100%; height: 72px; border-radius: var(--r-md); background: var(--surf-2); color: var(--ink-2); font-size: calc(12.5px * var(--fs)); }
+/* 只在别的设备上的图片（叮咪同步的套餐不传太大的）：说清楚在哪，不说「正在下载」 */
+.dmd p.att.wait[data-away]::after { content: attr(data-away); padding: 0 12px; text-align: center; height: auto; min-height: 72px; }
+.dmd .att-file { margin: 6px 0; }
+.dmd .file-card { display: inline-grid; grid-template-columns: 34px minmax(0, 1fr); grid-template-rows: auto auto; column-gap: 10px; align-items: center; max-width: min(420px, 100%); border: 1px solid var(--line); background: var(--surf); border-radius: var(--r-md); padding: 8px 12px 8px 10px; text-align: left; line-height: 1.4; cursor: pointer; }
+.dmd .file-card:hover { border-color: var(--line-2); background: var(--hover); }
+.dmd .file-card .fx { grid-row: span 2; width: 34px; height: 40px; border-radius: var(--r-sm); background: var(--accent-soft); color: var(--accent-ink); display: grid; place-items: center; font: 700 calc(10px * var(--fs)) var(--f-ui); overflow: hidden; }
+.dmd .file-card .fn { color: var(--ink); font-size: calc(13px * var(--fs)); font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dmd .file-card .fm { color: var(--ink-3); font-size: calc(11.5px * var(--fs)); }
+/* 文件卡片旁边的「另存为…」：鼠标停在这一行上才出来 */
+.dmd .file-save { margin-left: 8px; vertical-align: middle; height: 26px; padding: 0 10px; border: 1px solid var(--line-2); border-radius: var(--r-sm); background: var(--surf); color: var(--ink-2); font: inherit; font-size: calc(12px * var(--fs)); cursor: pointer; opacity: 0; transition: opacity var(--t-fast) var(--ease), background var(--t-fast) var(--ease); }
+.dmd .att-file:hover .file-save, .dmd .file-save:focus-visible { opacity: 1; }
+.dmd .file-save:hover { background: var(--hover); color: var(--ink); }
+.dmd .file-card.busy { cursor: progress; opacity: .75; }
+
+/* 复制按钮：鼠标停上去才出现 */
+.dmd .cp { visibility: hidden; display: inline-grid; place-items: center; width: 22px; height: 22px; margin: -2px -4px -2px 4px; padding: 0; vertical-align: middle; border: 0; border-radius: var(--r-sm); background: var(--surf); color: var(--ink-3); box-shadow: var(--sh-1); cursor: pointer; }
+.dmd .cp svg { width: 13px; height: 13px; fill: none; stroke: currentColor; stroke-width: 1.75; stroke-linecap: round; stroke-linejoin: round; }
+.dmd .cp:hover { color: var(--accent-ink); }
+.dmd td:hover .cp, .dmd .kv:hover .cp, .dmd .lnkw:hover .cp { visibility: visible; }
+
+/* ---------- 表格：三种看法（列表 / 卡片 / 表格），上面一条工具 ---------- */
+.dmd .tblock { position: relative; margin: 6px 0 10px; border: 1px solid var(--line); border-radius: var(--r-md); background: var(--surf); font-size: calc(12.5px * var(--fs)); line-height: 1.6; }
+.dmd .tblock > :last-child { border-bottom-left-radius: inherit; border-bottom-right-radius: inherit; }
+/* 两列的小表格：没有工具条，就是一张表 */
+.dmd .tblock:not(:has(.tbar)) { border: 0; background: none; }
+.dmd .tbar { display: flex; align-items: center; gap: 8px; padding: 6px 8px; background: var(--surf-2); border-bottom: 1px solid var(--line); border-radius: var(--r-md) var(--r-md) 0 0; flex-wrap: wrap; white-space: nowrap; color: var(--ink-3); font-size: calc(12px * var(--fs)); }
+.dmd .tbar .sp { flex: 1; }
+/* 「格子编辑」：大表格在工具条最右边；小表格（没有工具条）浮在右上角，鼠标停上去才出来 */
+.dmd .tgrid { height: 24px; padding: 0 9px; border: 1px solid var(--line-2); border-radius: var(--r-sm); background: var(--surf); color: var(--ink-2); font: inherit; font-size: calc(12px * var(--fs)); cursor: pointer; white-space: nowrap; transition: background var(--t-fast) var(--ease), opacity var(--t-fast) var(--ease); }
+.dmd .tgrid:hover { background: var(--hover); color: var(--ink); }
+.dmd .tblock > .tgrid { position: absolute; top: 6px; right: 8px; z-index: 2; opacity: 0; }
+.dmd .tblock:hover > .tgrid, .dmd .tblock > .tgrid:focus-visible { opacity: 1; }
+.dmd .tbar .seg { order: -1; display: inline-flex; background: var(--surf); border: 1px solid var(--line); border-radius: 7px; padding: 2px; gap: 2px; }
+.dmd .tbar .seg button { height: 22px; padding: 0 9px; border: 0; border-radius: 5px; background: none; color: var(--ink-2); font-size: calc(12px * var(--fs)); cursor: pointer; box-shadow: none; }
+.dmd .tbar .seg button:hover { color: var(--ink); }
+.dmd .tbar .seg button[aria-pressed="true"] { background: var(--accent-soft); color: var(--accent-ink); font-weight: 500; }
+.dmd .tfind { display: flex; align-items: center; gap: 6px; flex: 1 1 140px; max-width: 260px; height: 26px; padding: 0 8px; border-radius: var(--r-sm); border: 1px solid var(--line); background: var(--surf); color: var(--ink-3); }
+.dmd .tfind:focus-within { border-color: var(--accent); }
+.dmd .tfind input { flex: 1; min-width: 0; border: 0; outline: none; background: none; font: calc(12px * var(--fs)) var(--f-ui); color: var(--ink); padding: 0; }
+.dmd .tfind svg, .dmd .mrh svg, .dmd .tgh svg { width: 13px; height: 13px; flex: none; fill: none; stroke: currentColor; stroke-width: 1.75; stroke-linecap: round; stroke-linejoin: round; }
+.dmd .tpick { position: relative; }
+.dmd .tpickbtn { height: 24px; padding: 0 8px; border: 0; border-radius: var(--r-sm); background: none; color: var(--ink-2); font-size: calc(12px * var(--fs)); cursor: pointer; }
+.dmd .tpickbtn:hover, .dmd .tpickbtn[aria-expanded="true"] { background: var(--hover); color: var(--ink); }
+.dmd .tmenu { color: var(--ink); white-space: nowrap; position: absolute; right: 0; top: 28px; z-index: 10; min-width: 160px; max-height: 300px; overflow: auto; padding: 4px; border-radius: var(--r-md); background: var(--surf); box-shadow: var(--sh-3); }
+.dmd .tmenu .h { padding: 4px 8px 2px; font-size: calc(11px * var(--fs)); color: var(--ink-3); }
+.dmd .tmenu button { display: flex; align-items: center; gap: 8px; width: 100%; padding: 5px 8px; border: 0; border-radius: var(--r-sm); background: none; font-size: calc(12.5px * var(--fs)); text-align: left; color: var(--ink); cursor: pointer; }
+.dmd .tmenu button:hover { background: var(--hover); }
+.dmd .tmenu button[aria-checked="true"] { color: var(--accent-ink); }
+.dmd .tmenu button[aria-checked="true"]::after { content: "✓"; margin-left: auto; padding-left: 12px; }
+
+/* 列表：每行一条摘要，点开看全部 */
+.dmd .mrows { background: none; }
+.dmd .mrow + .mrow { border-top: 1px solid var(--line); }
+.dmd .mrow.open { background: var(--surf-2); }
+.dmd .mrh { display: grid; align-items: center; gap: 10px; width: 100%; padding: 7px 10px; border: 0; background: none; text-align: left; font-size: calc(12.5px * var(--fs)); color: var(--ink); cursor: pointer; }
+.dmd .mrh:hover { background: var(--hover); }
+.dmd .mrh svg { color: var(--ink-3); transition: transform var(--t-fast) var(--ease); }
+.dmd .mrow.open .mrh svg { transform: rotate(90deg); }
+.dmd .mrh b, .dmd .mrh span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dmd .mrh b { font-weight: 500; }
+.dmd .mrh span { color: var(--ink-2); }
+.dmd .tdetail, .dmd .tform { padding: 2px 10px 10px 34px; }
+.dmd .kv { display: grid; grid-template-columns: 5.5em minmax(0, 1fr); gap: 10px; padding: 3px 0; font-size: calc(12.5px * var(--fs)); line-height: 1.55; }
+.dmd .kv > span:first-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--ink-3); }
+.dmd .kv > span:last-child { min-width: 0; }
+.dmd .tacts { display: flex; align-items: center; gap: 6px; margin-top: 6px; flex-wrap: wrap; }
+.dmd .tacts .sp { flex: 1; }
+.dmd .tacts .btn.sure { background: var(--danger); border-color: transparent; color: var(--on-accent); }
+.dmd .tform { display: grid; gap: 6px; }
+.dmd .tform label { display: grid; grid-template-columns: 5.5em minmax(0, 1fr); gap: 10px; align-items: start; font-size: calc(12.5px * var(--fs)); }
+.dmd .tform label > span { padding-top: 5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--ink-2); }
+.dmd .tform textarea { min-height: 30px; padding: 4px 8px; border: 1px solid var(--line-2); border-radius: var(--r-sm); background: var(--surf); font: calc(12.5px * var(--fs))/1.55 var(--f-ui); color: var(--ink); outline: none; resize: vertical; field-sizing: content; }
+.dmd .tform textarea:focus { border-color: var(--accent); box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 18%, transparent); }
+.dmd .tform .tacts { padding-left: calc(5.5em + 10px); }
+.dmd .tnew { border-top: 1px solid var(--line); }
+.dmd .tadd { display: flex; width: 100%; justify-content: flex-start; margin: 0; height: 32px; padding: 0 10px; border: 0; border-top: 1px solid var(--line); border-radius: 0 0 var(--r-md) var(--r-md); background: none; color: var(--ink-3); font-size: calc(12.5px * var(--fs)); cursor: pointer; box-shadow: none; }
+.dmd .tadd:hover { background: var(--hover); color: var(--ink); }
+.dmd .tempty { padding: 14px; color: var(--ink-3); font-size: calc(12.5px * var(--fs)); text-align: center; }
+
+/* 分组 */
+.dmd .tgh { display: flex; align-items: center; gap: 6px; width: 100%; padding: 6px 10px 2px; border: 0; border-top: 1px solid var(--line); background: var(--surf); font-size: calc(11.5px * var(--fs)); color: var(--ink-3); text-align: left; cursor: pointer; }
+.dmd .tbar + .tgh { border-top: 0; }
+.dmd .tgh svg { transform: rotate(90deg); transition: transform var(--t-fast) var(--ease); }
+.dmd .tgh.closed svg { transform: none; }
+.dmd .tgh small { font-size: calc(11.5px * var(--fs)); }
+.dmd .tgh small::before { content: "· "; }
+
+/* 卡片：一行一张 */
+.dmd .cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 8px; padding: 8px; }
+.dmd .tcard { min-width: 0; padding: 8px 10px; border-radius: var(--r-md); border: 1px solid var(--line); background: var(--surf); }
+.dmd .tcard .ct { display: flex; align-items: baseline; justify-content: space-between; gap: 6px; padding-bottom: 2px; }
+.dmd .tcard .ct b { font-size: calc(13px * var(--fs)); }
+.dmd .tcard .ct small { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--ink-3); font-size: calc(11.5px * var(--fs)); }
+.dmd .tcard .kv { grid-template-columns: auto minmax(0, 1fr); gap: 4px; padding: 1px 0; font-size: calc(12px * var(--fs)); color: var(--ink-2); }
+.dmd .tcard .kv > span:first-child::after { content: "："; }
+
+/* 表格：表头和第一列固定，宽了左右滑；长格子先显示两行 */
+.dmd .tbl { overflow-x: auto; }
+.dmd table { width: max-content; min-width: 100%; border-collapse: separate; border-spacing: 0; font-size: calc(12.5px * var(--fs)); line-height: 1.55; overflow-wrap: normal; }
+.dmd th, .dmd td { max-width: 22em; padding: 7px 10px; text-align: left; vertical-align: top; overflow-wrap: break-word; border-top: 1px solid var(--line); background: var(--surf); }
+.dmd th { background: var(--surf-2); color: var(--ink-2); font-weight: 500; white-space: nowrap; border-top: 0; }
+.dmd .tblock:not(:has(.tbar)) .tbl { border: 1px solid var(--line); border-radius: var(--r-md); }
+.dmd .tblock:not(:has(.tbar)) th:first-child { border-top-left-radius: var(--r-md); }
+.dmd .tbl-big { max-height: 460px; overflow: auto; border-radius: 0 0 var(--r-md) var(--r-md); }
+.dmd .tbl-big th { position: sticky; top: 0; z-index: 2; }
+.dmd .tbl-big th:first-child, .dmd .tbl-big td:first-child { position: sticky; left: 0; z-index: 1; box-shadow: 1px 0 0 var(--line); }
+.dmd .tbl-big th:first-child { z-index: 3; }
+.dmd .clamp { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.dmd .tmore { padding: 0; border: 0; background: none; color: var(--accent-ink); font-size: calc(11.5px * var(--fs)); cursor: pointer; }

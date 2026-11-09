@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
+  <!-- 小尺寸（托盘、16～32 像素）用：只有脑袋、撑满格子、线条加粗 -->
+  <path d="M3 29 C2 19 4.5 13 7.5 10.5 L8 3.6 Q8.4 1.8 10.2 2.8 L14 6.9 Q16 6.5 18 6.9 L21.8 2.8 Q23.6 1.8 24 3.6 L24.5 10.5 C27.5 13 30 19 29 29 Z" fill="#fffaf3"/>
+  <path d="M8 3.6 Q8.4 1.8 10.2 2.8 L14 6.9 Q10 7.8 7.5 10.5 Z" fill="#ffab45"/>
+  <path d="M3 29 C2 19 4.5 13 7.5 10.5 L8 3.6 Q8.4 1.8 10.2 2.8 L14 6.9 Q16 6.5 18 6.9 L21.8 2.8 Q23.6 1.8 24 3.6 L24.5 10.5 C27.5 13 30 19 29 29 Z" fill="none" stroke="#3b2418" stroke-width="2.2" stroke-linejoin="round"/>
+  <ellipse cx="7.6" cy="23" rx="2" ry="1.3" fill="#ff8f9a" opacity=".7"/><ellipse cx="24.4" cy="23" rx="2" ry="1.3" fill="#ff8f9a" opacity=".7"/>
+  <circle cx="11" cy="18.6" r="2.5" fill="#3b2418"/><circle cx="21" cy="18.6" r="2.5" fill="#3b2418"/>
+</svg>

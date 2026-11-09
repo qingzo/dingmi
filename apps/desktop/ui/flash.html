@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>快捷框</title>
+  <script type="module" src="/pages/flash.ts"></script>
+</head>
+<body>
+  <div class="stage" id="stage">
+    <div class="qb" id="card">
+      <div class="qin">
+        <span class="who" id="who"></span>
+        <input id="inp" autocomplete="off" spellcheck="false" role="combobox" aria-controls="res" aria-expanded="true">
+        <span id="right"></span>
+      </div>
+      <div class="qmsg" id="msg" hidden></div>
+      <div id="body"></div>
+      <div class="foot" id="ft"></div>
+    </div>
+    <div class="saved" id="saved" role="status" hidden></div>
+  </div>
+  <div class="menu qmenu" id="menu" role="menu" hidden></div>
+</body>
+</html>

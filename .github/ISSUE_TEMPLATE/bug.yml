@@ -1,0 +1,41 @@
+name: 遇到问题
+description: 哪里不对、出错了、同步不上
+labels: ["问题"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        谢谢你来报告。发之前先搜一下有没有人提过，有的话在那条下面补充就好。
+        **安全问题请不要在这里写**，照 [SECURITY.md](https://github.com/qingzo/dingmi/blob/main/SECURITY.md) 私下告诉作者。
+  - type: textarea
+    id: what
+    attributes:
+      label: 做了什么、想要什么、实际怎么样了
+      description: 一步一步写，能截图更好。
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: 叮咪的版本
+      description: 「设置 → 关于」里有，比如 1.0.8
+    validations:
+      required: true
+  - type: input
+    id: windows
+    attributes:
+      label: Windows 版本
+      description: 比如 Windows 11 24H2
+  - type: dropdown
+    id: sync
+    attributes:
+      label: 用的同步方式
+      options:
+        - 没开同步
+        - 网盘文件夹
+        - 自建服务器
+        - 叮咪同步
+  - type: markdown
+    attributes:
+      value: |
+        需要的话作者会请你导出诊断信息（「设置 → 关于 → 导出诊断信息」），**不要直接贴到这里**：等作者说怎么发。

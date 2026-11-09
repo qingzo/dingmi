@@ -1,0 +1,104 @@
+/* 首次引导（U10，design/ui/u10-onboarding.html）。窗口是透明的，卡片宽 520，四周留 14 像素给阴影 */
+body.onboard { background: transparent; overflow: hidden; }
+.ob { margin: 14px; width: 520px; min-height: 452px; background: var(--surf); border-radius: var(--r-lg); box-shadow: var(--sh-2); overflow: hidden; display: flex; flex-direction: column; }
+
+/* 顶上：三段进度条 + 跳过；空白处能拖动窗口 */
+.ob .hd { display: flex; align-items: center; gap: 10px; padding: 14px 18px 0; min-height: 40px; }
+.ob .hd .sp { flex: 1; align-self: stretch; }
+.dots { display: flex; gap: 6px; }
+.dots i { width: 22px; height: 5px; border-radius: var(--r-pill); background: var(--press); transition: background var(--t-mid) var(--ease); }
+.dots i.on { background: var(--accent); }
+.dots i.done { background: color-mix(in srgb, var(--accent) 45%, var(--press)); }
+.skip { border: 0; background: none; padding: 4px 6px; border-radius: var(--r-sm); font-size: calc(12.5px * var(--fs)); color: var(--ink-3); }
+.skip:hover { color: var(--ink); background: var(--hover); }
+
+.ob .bd { flex: 1; padding: 10px 26px 6px; display: grid; gap: 12px; align-content: start; animation: enter var(--t-slow) var(--ease) both; }
+.ob h3 { margin: 0; font-size: calc(22px * var(--fs)); font-weight: 700; letter-spacing: -.01em; line-height: 1.35; }
+.ob p.s { margin: 2px 0 0; color: var(--ink-2); font-size: calc(13.5px * var(--fs)); }
+.ob .ft { display: flex; gap: 8px; align-items: center; padding: 14px 18px 16px; }
+.ob .ft .sp { flex: 1; }
+
+/* 第 1 步：团子猫挥手 + 三选一 */
+.hero { display: flex; gap: 14px; align-items: center; min-height: 64px; }
+.hero .cat { width: 96px; height: 86px; }
+.opts { display: grid; gap: 8px; }
+.opt { display: flex; gap: 12px; align-items: center; padding: 12px 14px; border-radius: var(--r-lg); border: 1px solid var(--line-2); background: var(--surf); text-align: left; width: 100%; transition: border-color var(--t-fast) var(--ease), background var(--t-fast) var(--ease); }
+.opt:hover { background: var(--hover); }
+.opt.on { border-color: var(--accent); background: var(--accent-soft); }
+.opt:disabled { opacity: .55; cursor: default; }
+.opt:disabled:hover { background: var(--surf); }
+.opt .ic { width: 36px; height: 36px; border-radius: var(--r-md); display: grid; place-items: center; background: var(--surf-2); color: var(--ink-2); flex: none; }
+.opt.on .ic { background: var(--accent); color: var(--on-accent); }
+.opt b { display: block; font-size: calc(14px * var(--fs)); font-weight: 600; }
+.opt small { display: block; color: var(--ink-3); font-size: calc(12px * var(--fs)); }
+.opt .radio { margin-left: auto; }
+
+/* 加入同步：文件夹列表 */
+.picks { display: grid; gap: 6px; }
+.pick { display: flex; gap: 10px; align-items: center; padding: 8px 12px; border-radius: var(--r-md); border: 1px solid var(--line-2); background: var(--surf); text-align: left; width: 100%; min-width: 0; }
+.pick:hover { background: var(--hover); }
+.pick.on { border-color: var(--accent); background: var(--accent-soft); }
+.pick > .lucide { color: var(--ink-3); }
+.pick.on > .lucide { color: var(--accent-ink); }
+.pick .t { flex: 1; min-width: 0; }
+.pick b { display: block; font-weight: 500; font-size: calc(13px * var(--fs)); }
+.pick small { display: block; font-size: calc(11.5px * var(--fs)); color: var(--ink-3); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pick .st { font-size: calc(11.5px * var(--fs)); color: var(--ink-3); white-space: nowrap; }
+.pick .st[data-st="space"] { color: var(--ok); }
+.pick .st[data-st="bad"] { color: var(--danger); }
+.pick.wait { color: var(--ink-3); border-style: dashed; cursor: default; }
+.pick.wait:hover { background: var(--surf); }
+.form { display: grid; gap: 10px; }
+.form label { display: grid; gap: 4px; font-size: calc(12.5px * var(--fs)); font-weight: 500; }
+.form label small { font-weight: 400; color: var(--ink-3); font-size: calc(11.5px * var(--fs)); }
+.form .field { width: 100%; }
+.form.two { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+
+/* 从导出包恢复 */
+.pkg { display: flex; gap: 12px; align-items: center; padding: 12px 14px; border-radius: var(--r-lg); background: var(--surf-2); }
+.pkg > .lucide { color: var(--accent-ink); }
+.pkg > div { min-width: 0; }
+.pkg b { display: block; font-size: calc(13.5px * var(--fs)); }
+.pkg small { display: block; font-size: calc(11.5px * var(--fs)); color: var(--ink-3); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.hint { margin: 0; color: var(--ink-3); font-size: calc(12px * var(--fs)); }
+
+/* 第 2 步：大按键 + 示例句 */
+.keyshow { display: flex; gap: 8px; align-items: center; justify-content: center; padding: 18px; border-radius: var(--r-lg); background: var(--surf-2); }
+.keyshow kbd { font: 700 calc(18px * var(--fs)) var(--f-ui); height: 42px; min-width: 56px; padding: 0 14px; border-radius: var(--r-md); border: 1px solid var(--line-2); border-bottom-width: 3px; background: var(--surf); display: inline-grid; place-items: center; color: var(--ink); }
+.keyshow span { font-size: calc(18px * var(--fs)); color: var(--ink-3); }
+.keyshow.off kbd { color: var(--ink-3); }
+.sample { display: flex; gap: 10px; align-items: center; padding: 10px 12px; border-radius: var(--r-md); border: 1px dashed var(--line-2); font-size: calc(14px * var(--fs)); }
+.sample > .lucide { width: 16px; height: 16px; color: var(--accent-ink); }
+.sample span { flex: 1; }
+.wait { display: flex; gap: 8px; align-items: center; font-size: calc(12.5px * var(--fs)); color: var(--ink-3); }
+.wait .pulse { width: 8px; height: 8px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 0 0 color-mix(in srgb, var(--accent) 60%, transparent); animation: pulse 1.6s infinite; }
+@keyframes pulse { 70% { box-shadow: 0 0 0 8px transparent; } }
+.ob .banner.ok { animation: enter var(--t-slow) var(--ease) both; }
+.banner .code { font: 600 calc(13px * var(--fs)) var(--f-mono); user-select: all; word-break: break-all; display: block; margin: 2px 0; }
+.tips { display: grid; gap: 4px; font-size: calc(12.5px * var(--fs)); color: var(--ink-2); }
+.tips div { display: flex; gap: 8px; align-items: center; }
+.tips .lucide { width: 14px; height: 14px; color: var(--ink-3); }
+
+/* 第 3 步：几个开关 */
+.ob .srows { box-shadow: var(--sh-1); }
+.ob .srow { flex-wrap: nowrap; min-height: 50px; padding: 9px 0; }
+.ob .srow > .ic { width: 30px; height: 30px; border-radius: var(--r-sm); background: var(--surf-2); display: grid; place-items: center; color: var(--ink-2); flex: none; }
+.ob .srow > .ic .lucide { width: 16px; height: 16px; }
+.ob .srow > div { flex: 1; min-width: 0; }
+.ob select.field { height: 28px; font-size: calc(12.5px * var(--fs)); padding: 0 4px 0 8px; }
+.ob .seg { justify-self: start; }
+/* 最后一步按钮上面那行小字：《用户协议》《隐私说明》点了用浏览器打开 */
+.ob p.agree { margin: 2px 0 0; text-align: right; color: var(--ink-3); font-size: calc(12px * var(--fs)); }
+/* 加入同步那一屏：叮咪同步配对码 / 恢复码之间切换的链接 */
+.ob .agree .lnk, .ob p.s .lnk { display: inline; padding: 0; border: 0; background: none; font: inherit; color: var(--accent-ink); cursor: pointer; }
+.ob .agree .lnk:hover, .ob p.s .lnk:hover { text-decoration: underline; text-underline-offset: 2px; }
+/* 叮咪同步的四种加法、用手机加入的数字和 4 个字（需求-1.x 第 34 节） */
+.opt > .lucide:last-child { margin-left: auto; width: 16px; height: 16px; color: var(--ink-3); }
+.tagr { margin-left: 6px; padding: 0 7px; border-radius: 99px; background: var(--accent-soft); color: var(--accent-ink); font-size: calc(10.5px * var(--fs)); font-style: normal; font-weight: 500; vertical-align: 1px; }
+.phone-wait { display: grid; justify-items: center; gap: 10px; padding: 14px; border-radius: var(--r-lg); background: var(--surf); box-shadow: var(--sh-1); }
+.phone-wait .digits { display: flex; gap: 5px; }
+.phone-wait .digits span { display: grid; place-items: center; width: 34px; height: 44px; border: 1px solid var(--line-2); border-radius: 9px; background: var(--surf-2); font: 700 calc(22px * var(--fs)) var(--f-mono); }
+.phone-wait .digits i { width: 8px; }
+.phone-wait .words { display: flex; gap: 8px; }
+.phone-wait .words span { display: grid; place-items: center; min-width: 40px; height: 40px; border-radius: 11px; background: var(--accent-soft); color: var(--accent-ink); font-size: calc(19px * var(--fs)); font-weight: 700; }
+.phone-wait .wait { display: inline-flex; align-items: center; gap: 6px; color: var(--ink-3); font-size: calc(12px * var(--fs)); }

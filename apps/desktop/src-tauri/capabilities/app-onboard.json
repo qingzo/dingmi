@@ -1,0 +1,32 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "app-onboard",
+  "description": "onboard 窗口能调的叮咪命令（node scripts/caps.mjs --write 按页面代码生成，别手改）",
+  "windows": [
+    "onboard"
+  ],
+  "permissions": [
+    "allow-fit-window",
+    "allow-get-settings",
+    "allow-official-join",
+    "allow-official-phone-join",
+    "allow-official-phone-poll",
+    "allow-official-phone-start",
+    "allow-official-recover",
+    "allow-onboard-done",
+    "allow-onboard-guide-note",
+    "allow-onboard-info",
+    "allow-open-main-nav",
+    "allow-open-url",
+    "allow-pick-folder",
+    "allow-restore-apply",
+    "allow-restore-peek",
+    "allow-restore-pick",
+    "allow-save-settings",
+    "allow-sync-folder-candidates",
+    "allow-sync-folder-probe",
+    "allow-sync-folder-start",
+    "allow-sync-pair",
+    "allow-sync-status"
+  ]
+}

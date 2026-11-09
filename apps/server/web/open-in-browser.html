@@ -1,0 +1,76 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="robots" content="noindex, nofollow">
+<meta name="referrer" content="no-referrer">
+<title>请在浏览器里打开 · 叮咪</title>
+<style>
+:root { --bg: #f6f1ec; --surf: #fffcf8; --line: #efe6dd; --ink: #2a2421; --ink-2: #6f655e; --ink-3: #9a8f87; --accent: #f07326; --accent-soft: #fdeadc; --accent-ink: #c4560f; --on-accent: #fff; color-scheme: light; }
+@media (prefers-color-scheme: dark) {
+  :root { --bg: #17130f; --surf: #231e1a; --line: #352d27; --ink: #f4eee9; --ink-2: #c3b8b0; --ink-3: #8f857d; --accent: #ff8a45; --accent-soft: #43281a; --accent-ink: #ffa36b; --on-accent: #1a0e06; color-scheme: dark; }
+}
+* { box-sizing: border-box; }
+body { margin: 0; min-height: 100vh; background: var(--bg); color: var(--ink); font: 15px/1.6 "PingFang SC", "Microsoft YaHei UI", system-ui, sans-serif; padding: 18px 16px calc(24px + env(safe-area-inset-bottom)); }
+.arrow { position: fixed; top: 6px; right: 14px; color: var(--accent); }
+.arrow svg { display: block; width: 92px; height: 92px; }
+main { max-width: 420px; margin: 96px auto 0; }
+h1 { margin: 0 0 6px; font-size: 22px; }
+.sub { margin: 0 0 18px; color: var(--ink-2); }
+ol { margin: 0; padding: 0; list-style: none; background: var(--surf); border-radius: 14px; box-shadow: 0 0 0 1px var(--line); }
+li { display: flex; gap: 12px; align-items: flex-start; padding: 14px; }
+li + li { border-top: 1px solid var(--line); }
+.n { flex: none; width: 24px; height: 24px; border-radius: 50%; background: var(--accent-soft); color: var(--accent-ink); font-weight: 700; font-size: 13px; display: grid; place-items: center; margin-top: 1px; }
+b { color: var(--accent-ink); font-weight: 600; }
+.dots { display: inline-block; padding: 0 6px; border-radius: 6px; background: var(--accent-soft); color: var(--accent-ink); font-weight: 700; letter-spacing: 1px; }
+.or { margin: 22px 0 10px; color: var(--ink-3); font-size: 13px; }
+button { width: 100%; height: 46px; border: 0; border-radius: 12px; background: var(--accent); color: var(--on-accent); font: inherit; font-weight: 600; }
+.msg { word-break: break-all; min-height: 1.6em; margin: 8px 0 0; font-size: 13px; color: var(--ink-2); text-align: center; }
+.fine { margin-top: 18px; font-size: 12.5px; color: var(--ink-3); }
+</style>
+</head>
+<body>
+<div class="arrow" aria-hidden="true"><svg viewBox="0 0 92 92" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M14 84 C 22 50, 44 28, 76 16" stroke-dasharray="2 8"/><path d="M60 10 L78 15 L70 32"/></svg></div>
+<main>
+  <h1>请在浏览器里打开</h1>
+  <p class="sub">在 App 里打开的网页存不住叮咪的数据，也装不了证书，换到手机自带的浏览器就好。</p>
+  <ol>
+    <li><span class="n">1</span><span>点右上角的 <span class="dots">···</span></span></li>
+    <li><span class="n">2</span><span id="pick">选 <b>在浏览器打开</b></span></li>
+  </ol>
+  <p class="or">菜单里没有这一项？复制网址，粘贴到浏览器里打开：</p>
+  <button type="button" id="copy">复制网址</button>
+  <p class="msg" id="msg" role="status"></p>
+  <p class="fine" id="fine" hidden>网址里带着这部手机的配对信息，只发给自己，别发给别人。</p>
+</main>
+<script>
+(function () {
+  var ios = /iPhone|iPad|iPod/i.test(navigator.userAgent);
+  if (ios) document.getElementById("pick").innerHTML = "选 <b>在 Safari 中打开</b>（有的版本叫「在默认浏览器中打开」）";
+  if (location.pathname.indexOf("/m/") === 0) document.getElementById("fine").hidden = false;
+  var msg = document.getElementById("msg");
+  document.getElementById("copy").onclick = function () {
+    var url = location.href;
+    var done = function () { msg.textContent = "复制好了，打开浏览器，粘贴到地址栏"; };
+    var old = function () {
+      var t = document.createElement("textarea");
+      t.value = url;
+      t.setAttribute("readonly", "");
+      t.style.position = "fixed";
+      t.style.opacity = "0";
+      document.body.appendChild(t);
+      t.select();
+      t.setSelectionRange(0, url.length);
+      var ok = false;
+      try { ok = document.execCommand("copy"); } catch (e) {}
+      document.body.removeChild(t);
+      if (ok) done(); else msg.textContent = "复制不了，长按下面的网址复制：" + url;
+    };
+    if (navigator.clipboard && window.isSecureContext) navigator.clipboard.writeText(url).then(done, old);
+    else old();
+  };
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,17 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "app-wrap",
+  "description": "wrap 窗口能调的叮咪命令（node scripts/caps.mjs --write 按页面代码生成，别手改）",
+  "windows": [
+    "wrap"
+  ],
+  "permissions": [
+    "allow-fit-window",
+    "allow-get-settings",
+    "allow-list-reminders",
+    "allow-reminder-action",
+    "allow-show-quiet",
+    "allow-wrap-done",
+    "allow-wrap-status"
+  ]
+}

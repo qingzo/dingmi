@@ -1,0 +1,29 @@
+[package]
+name = "dingmi-server"
+version = "1.0.8"
+description = "叮咪的同步服务器：一个端口同时服务电脑端（Noise 加密）和手机网页（HTTPS，自签证书）"
+edition = "2021"
+license = "AGPL-3.0-only"
+
+[features]
+# 测试用的工具（src/testkit.rs：在本机起服务器、像电脑一样连上去），给在它上面加东西的程序写测试用。正式的程序不开
+testkit = []
+
+[dependencies]
+dingmi-sync = { path = "../../crates/sync" }
+base64 = "0.22"
+chrono = "0.4"
+http-body-util = "0.1"
+hyper = { version = "1", features = ["server", "http1"] }
+hyper-util = { version = "0.1", features = ["tokio"] }
+libc = "0.2"
+rand = "0.8"
+rcgen = { version = "0.13", default-features = false, features = ["crypto", "pem", "ring", "x509-parser"] }
+rusqlite = { version = "0.32", features = ["bundled"] }
+rustls = { version = "0.23", default-features = false, features = ["ring", "std", "tls12"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+sha2 = "0.10"
+time = "0.3"
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "net", "io-util", "time", "sync", "fs"] }
+tokio-rustls = { version = "0.26", default-features = false, features = ["ring", "tls12"] }

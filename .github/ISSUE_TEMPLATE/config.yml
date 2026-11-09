@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: 安全问题
+    url: https://github.com/qingzo/dingmi/security/advisories/new
+    about: 私下报告，只有作者能看到。不要开公开的 Issue。
+  - name: 使用说明
+    url: https://dingmi.app/docs/
+    about: 怎么用、时间的说法、同步和手机，先看看这里有没有。

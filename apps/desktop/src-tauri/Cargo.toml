@@ -1,0 +1,64 @@
+[package]
+name = "dingmi"
+version = "1.0.8"
+description = "叮咪：免费开源的 Windows 效率工具（提醒、笔记、启动器）"
+edition = "2021"
+license = "AGPL-3.0-only"
+
+[lib]
+name = "dingmi_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[features]
+# 给自己试用的测试包：不检查更新（npm run tauri build -- --features no-update）
+no-update = []
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = ["tray-icon", "image-png", "protocol-asset"] }
+tauri-plugin-global-shortcut = "2"
+tauri-plugin-single-instance = "2"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+rusqlite = { version = "0.32", features = ["bundled"] }
+chrono = { version = "0.4", features = ["serde"] }
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
+# 同步走 wss://域名/sync 时自己建 TLS（版本和 reqwest 用的那份一样，不多下载）
+rustls = { version = "0.23", default-features = false, features = ["ring", "std", "tls12"] }
+tokio-rustls = { version = "0.26", default-features = false, features = ["ring", "tls12"] }
+webpki-roots = "1"
+tokio = { version = "1", features = ["time", "sync", "macros", "net"] }
+uuid = { version = "1", features = ["v4", "v7"] }
+dingmi-sync = { path = "../../../crates/sync" }
+argon2 = "0.5"
+base64 = "0.22"
+chacha20poly1305 = "0.10"
+crypto_box = "0.9"
+hkdf = "0.12"
+sha2 = "0.10"
+keyring = { version = "3", features = ["windows-native"] }
+minisign-verify = "0.2"
+pinyin = "0.10"
+png = "0.18"
+# 叮咪同步的套餐限单个图片多大：超过的压一份小的再传（只要 JPEG、PNG，tauri 本来就带着 image）
+image = { version = "0.25", default-features = false, features = ["jpeg", "png"] }
+# 一键导出：打包成 zip，只要 deflate 压缩
+zip = { version = "9", default-features = false, features = ["deflate"] }
+# 导出、恢复时选位置和文件
+tauri-plugin-dialog = "2"
+
+[target.'cfg(windows)'.dependencies]
+# 主窗口里拖进来的文件拿到真实路径（WebView2 的 postMessageWithAdditionalObjects，见 sys.rs file_drops）
+webview2-com = "0.39"
+windows-sys = { version = "0.59", features = ["Win32_UI_Shell", "Win32_UI_Input_KeyboardAndMouse", "Win32_System_SystemInformation", "Win32_Foundation", "Win32_System_DataExchange", "Win32_System_Memory", "Win32_UI_WindowsAndMessaging", "Win32_System_Registry", "Win32_Graphics_Dwm", "Win32_System_LibraryLoader", "Win32_Storage_FileSystem", "Win32_System_ProcessStatus", "Win32_System_Threading"] }
+# 启动器：找开始菜单里的程序、取图标、打开程序（COM 接口，windows-sys 里没有）
+windows = { version = "0.62", features = ["Win32_UI_Shell", "Win32_UI_Shell_Common", "Win32_UI_Shell_PropertiesSystem", "Win32_System_Com", "Win32_Storage_EnhancedStorage", "Win32_Graphics_Gdi", "Win32_UI_WindowsAndMessaging", "Win32_Foundation", "Win32_System_Registry"] }
+
+[dev-dependencies]
+tokio = { version = "1", features = ["rt", "macros"] }
+# 测试里给假的安装包签名
+minisign = "0.10"
+# 测试里起一个本机的同步服务器（叮咪同步的兑换开通、满了只拦附件）
+dingmi-server = { path = "../../server" }

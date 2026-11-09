@@ -1,0 +1,43 @@
+/* 快速记笔记小窗口（qnote.html，U7）：卡片宽 460，窗口四周各留 14 像素给阴影（窗口本身透明）。
+   只用 tokens.css 的变量；正文编辑器的样子在 editor.css */
+html, body { background: transparent; overflow: hidden; }
+.qnote { margin: 14px; background: var(--surf); border-radius: var(--r-lg); box-shadow: var(--sh-3); overflow: hidden; animation: enter var(--t-slow) var(--ease) both; }
+
+.qh { display: flex; align-items: center; gap: 4px; padding: 10px 10px 4px 14px; -webkit-user-select: none; user-select: none; }
+.qh input { flex: 1; min-width: 0; height: 30px; border: 0; outline: 0; background: none; padding: 0; font: 700 calc(16px * var(--fs)) var(--f-ui); color: var(--ink); }
+.qh input::placeholder { color: var(--ink-3); }
+.qh .btn .lucide { width: 15px; height: 15px; }
+
+/* 正文：至少 150 高，再高就在里面滚 */
+.qb { padding: 0 8px; }
+.qb .dm-ed.cm-editor { min-height: 150px; max-height: 340px; font-size: calc(14px * var(--fs)); line-height: 1.8; }
+.qb .dm-ed .cm-scroller { min-height: 150px; overflow: auto; }
+.qb .dm-ed .cm-content { padding: 2px 0 12px; }
+
+/* 拖进来、粘贴的图片和文件 */
+.att { display: flex; gap: 8px; padding: 6px 14px 8px; flex-wrap: wrap; }
+.att .th { position: relative; width: 54px; height: 40px; flex: none; }
+.att .th img { width: 100%; height: 100%; object-fit: cover; border-radius: var(--r-sm); box-shadow: var(--sh-1); display: block; }
+.att .fl { position: relative; max-width: 200px; height: 40px; border-radius: var(--r-sm); border: 1px solid var(--line); padding: 0 12px 0 10px; display: flex; align-items: center; gap: 6px; font-size: calc(12px * var(--fs)); }
+.att .fl span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.att .fl > .lucide { width: 14px; height: 14px; color: var(--danger); }
+.att button { position: absolute; right: -6px; top: -6px; width: 18px; height: 18px; padding: 0; border: 0; border-radius: 50%; background: var(--ink); color: var(--surf); display: grid; place-items: center; cursor: pointer; opacity: 0; transition: opacity var(--t-fast) var(--ease); }
+.att .th:hover button, .att .fl:hover button, .att button:focus-visible { opacity: 1; }
+.att button .lucide { width: 11px; height: 11px; stroke-width: 2.5; }
+
+/* 底下一排：分类、草稿已存、加文件、保存 */
+.qf { display: flex; align-items: center; gap: 6px; padding: 10px 12px 10px 14px; border-top: 1px solid var(--line); flex-wrap: wrap; }
+.qf .cats { display: flex; gap: 6px; flex-wrap: wrap; }
+.qf .sp { flex: 1; min-width: 8px; align-self: stretch; }
+.qf .draft { font-size: calc(11.5px * var(--fs)); color: var(--ink-3); white-space: nowrap; max-width: 210px; overflow: hidden; text-overflow: ellipsis; }
+.qf .draft .ok { color: var(--ok); display: inline-flex; align-items: center; gap: 4px; font-weight: 500; }
+.qf .draft .ok .lucide { width: 13px; height: 13px; }
+.qf .draft .undo { border: 0; background: none; padding: 0 2px; color: var(--accent-ink); font-size: calc(11.5px * var(--fs)); cursor: pointer; }
+.qf .btn .lucide { width: 15px; height: 15px; }
+.qf .btn .spin { width: 12px; height: 12px; }
+.qf #save kbd { margin-left: 4px; height: 18px; background: transparent; border-color: currentColor; color: inherit; opacity: .7; }
+/* 分类：没选的是空心的，选了的是彩色小标 */
+.qcat { border: 1px solid transparent; cursor: pointer; }
+.qcat[aria-pressed="false"] { background: transparent; border-color: var(--line-2); color: var(--ink-2); }
+.qcat[aria-pressed="false"]::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: var(--c); }
+.qcat[aria-pressed="false"]:hover { background: var(--hover); }

@@ -1,0 +1,24 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "default",
+  "description": "叮咪所有窗口共用的权限：Tauri 自带的窗口、事件这些。叮咪自己的命令按窗口分开给，见 app-*.json",
+  "windows": ["main", "flash", "qnote", "remind", "morning", "wrap", "widget", "note-*", "onboard"],
+  "permissions": [
+    "core:default",
+    "core:window:allow-close",
+    "core:window:allow-hide",
+    "core:window:allow-show",
+    "core:window:allow-minimize",
+    "core:window:allow-toggle-maximize",
+    "core:window:allow-is-maximized",
+    "core:window:allow-set-focus",
+    "core:window:allow-start-dragging",
+    "core:window:allow-set-size",
+    "core:window:allow-destroy",
+    "core:window:allow-set-fullscreen",
+    "core:window:allow-is-fullscreen",
+    "core:window:allow-set-title",
+    "core:window:allow-center",
+    "core:webview:allow-set-webview-zoom"
+  ]
+}

@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>快速记笔记</title>
+  <script type="module" src="/pages/qnote.ts"></script>
+</head>
+<body>
+  <!-- 按钮上的图标、提示文字由 qnote.ts 填（text/notes.ts） -->
+  <div class="qnote" id="card">
+    <div class="qh" data-tauri-drag-region>
+      <input id="title" autocomplete="off" spellcheck="false">
+      <button class="btn ghost icon sm" id="tomain"></button>
+      <button class="btn ghost icon sm" id="close"></button>
+    </div>
+    <div class="qb" id="body"></div>
+    <div class="att" id="att" hidden></div>
+    <div class="qf" data-tauri-drag-region>
+      <div class="cats" id="tags"></div>
+      <span class="sp" data-tauri-drag-region></span>
+      <span class="draft" id="tip"></span>
+      <button class="btn ghost icon sm" id="tidy"></button>
+      <button class="btn ghost icon sm" id="attach"></button>
+      <button class="btn pri sm" id="save"></button>
+    </div>
+  </div>
+</body>
+</html>

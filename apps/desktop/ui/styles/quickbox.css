@@ -1,0 +1,125 @@
+/* 快捷框（U4，design/ui/u4-quickbox.html）。和 ui.css 一起用，只用 tokens.css 的变量。
+   窗口是透明的，框外面那圈 .stage 留给阴影：宽度和 win.rs 的 FLASH_W 对上（640 + 两边各 24），
+   顶上 10 和 win.rs 的 FLASH_TOP 对上；高度跟着内容变（fitWindow），结果往下展开，框的顶边不动 */
+html, body { height: auto; background: transparent; overflow: hidden; }
+.stage { padding: 10px 24px 40px; }
+.stage.gone .qb, .stage.gone .saved { opacity: 0; }
+.lucide { stroke-width: 1.75; }
+
+.qb { width: 640px; background: var(--surf); border-radius: var(--r-lg); box-shadow: var(--sh-3); overflow: hidden; }
+/* 出现：淡入并下移 6px；消失不留动画。减少动画时 tokens.css 统一关掉 */
+.qb.enter, .saved.enter { animation: qb-in var(--t-mid) var(--ease) both; }
+@keyframes qb-in { from { opacity: 0; transform: translateY(-6px); } }
+
+/* 输入行：左边团子猫小脑袋（静止），关掉团子猫时是铃铛 */
+.qin { height: 56px; display: flex; align-items: center; gap: 12px; padding: 0 16px; }
+.qin .who { width: 26px; height: 26px; flex: none; display: grid; place-items: center; }
+.qin .who svg { display: block; }
+.qin .who .cat { width: 26px; height: 26px; }
+.qin .who .nocat { color: var(--accent); }
+.qin .who .nocat .lucide { width: 22px; height: 22px; }
+.nocat { display: none; }
+:root[data-mascot="off"] .nocat { display: grid; place-items: center; }
+#inp { flex: 1; min-width: 0; height: 100%; border: 0; outline: 0; background: transparent; padding: 0; font-size: calc(16px * var(--fs)); color: var(--ink); caret-color: var(--accent); }
+#inp:focus-visible { outline: 0; }
+#inp::placeholder { color: var(--ink-3); }
+#inp:disabled { color: var(--ink-2); }
+.mode { display: inline-flex; align-items: center; gap: 4px; height: 24px; padding: 0 9px; border-radius: var(--r-pill); background: var(--accent-soft); color: var(--accent-ink); font-size: calc(12px * var(--fs)); font-weight: 500; flex: none; }
+.mode .lucide { width: 14px; height: 14px; }
+/* 右边：搜索、网页关键字时的小标，和到设置的齿轮 */
+#right { display: flex; align-items: center; gap: 8px; flex: none; }
+.qset { width: 28px; height: 28px; display: grid; place-items: center; border: 0; padding: 0; border-radius: var(--r-sm); background: none; color: var(--ink-3); }
+.qset:hover { background: var(--hover); color: var(--ink); }
+.qset .lucide { width: 16px; height: 16px; }
+.sep { height: 1px; background: var(--line); }
+
+/* 改常用、别名之后的一句话；出错时的横幅 */
+.qmsg { margin: 0 12px 10px; }
+.qmsg .banner { padding: 7px 10px; font-size: calc(12px * var(--fs)); }
+.qmsg .banner .lucide { width: 16px; height: 16px; }
+
+/* 结果：最多露 6 行（行高 46），多了往下翻 */
+.res { padding: 6px; display: grid; gap: 2px; max-height: 298px; overflow-y: auto; scroll-padding: 6px; }
+.r { display: flex; align-items: center; gap: 10px; padding: 0 10px; min-height: 46px; border-radius: var(--r-md); cursor: default; }
+.r[aria-selected="true"] { background: var(--accent-soft); }
+.r.tall { padding: 7px 10px; align-items: flex-start; }
+.r.tall .k { margin-top: 6px; }
+.r .main { flex: 1; min-width: 0; }
+.r .t { font-size: calc(14px * var(--fs)); font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; line-height: 1.45; }
+.r .s { font-size: calc(11.5px * var(--fs)); color: var(--ink-3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; line-height: 1.5; }
+.r .s b { color: var(--accent-ink); font-weight: 700; }
+.r mark { background: transparent; color: var(--accent-ink); font-weight: 700; }
+.r.gone .t { color: var(--ink-3); text-decoration: line-through; }
+/* 右边：选中那一行是 ↵，别的是 Alt + 数字 */
+.r .k { flex: none; display: flex; gap: 4px; align-items: center; }
+.r .k kbd { height: 18px; }
+.r .k .go, .r[aria-selected="true"] .k .alt { display: none; }
+.r[aria-selected="true"] .k .go { display: inline-grid; }
+
+/* 每一行左边的图标 */
+.ic { width: 30px; height: 30px; border-radius: calc(var(--r-sm) + 2px); display: grid; place-items: center; flex: none; font-weight: 700; font-size: calc(13px * var(--fs)); }
+.ic .lucide { width: 16px; height: 16px; }
+img.ic { object-fit: contain; border-radius: 0; }
+.ic.rem { background: var(--accent); color: var(--on-accent); }
+.ic.note { background: color-mix(in srgb, var(--tc-amber) 18%, var(--surf)); color: var(--tc-amber); }
+.ic.txt, .ic.file { background: var(--surf-2); color: var(--ink-2); box-shadow: inset 0 0 0 1px var(--line); }
+.ic.folder { background: color-mix(in srgb, var(--tc-amber) 16%, var(--surf)); color: var(--tc-amber); }
+.ic.link { background: color-mix(in srgb, var(--info) 14%, var(--surf)); color: var(--info); }
+/* 网页关键字、随手算（U4 稿子） */
+.ic.web { background: color-mix(in srgb, var(--info) 14%, var(--surf)); color: var(--info); }
+.ic.calc { background: color-mix(in srgb, var(--tc-purple) 14%, var(--surf)); color: var(--tc-purple); }
+.r.big { min-height: 58px; }
+.r.big .t { font-size: calc(20px * var(--fs)); font-weight: 700; font-variant-numeric: tabular-nums; }
+/* 笔记分类：style="--c: var(--tc-amber)" */
+.tagmini { display: inline-block; font-size: calc(10.5px * var(--fs)); line-height: 16px; padding: 0 6px; border-radius: var(--r-pill); margin-left: 6px; vertical-align: 1px; font-weight: 500; background: color-mix(in srgb, var(--c) 14%, var(--surf)); color: color-mix(in srgb, var(--c) 82%, var(--ink)); }
+/* 说得含糊：先定了一个时间，黄色小条说一声 */
+.hint { display: inline-flex; align-items: center; gap: 4px; max-width: 100%; font-size: calc(11.5px * var(--fs)); line-height: 18px; padding: 1px 8px; border-radius: var(--r-pill); background: var(--warn-soft); color: var(--warn); margin-top: 3px; }
+.hint .lucide { width: 12px; height: 12px; }
+
+/* 空着时：一排 8 个常用 + 下一条 */
+.pins { display: grid; grid-template-columns: repeat(8, minmax(0, 1fr)); gap: 4px; padding: 10px 10px 4px; }
+.pin { display: grid; justify-items: center; gap: 3px; padding: 8px 2px 6px; border: 0; border-radius: var(--r-md); background: none; font-size: calc(11.5px * var(--fs)); min-width: 0; color: var(--ink); }
+.pin:hover, .pin[aria-selected="true"] { background: var(--hover); }
+.pin .ic { width: 38px; height: 38px; border-radius: calc(var(--r-md) + 1px); font-size: calc(15px * var(--fs)); }
+.pin img.ic { padding: 3px; }
+.pin .ic .lucide { width: 18px; height: 18px; }
+.pin .nm { max-width: 100%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.next { display: flex; align-items: center; gap: 8px; width: calc(100% - 20px); margin: 4px 10px 10px; padding: 8px 12px; border: 0; border-radius: var(--r-md); background: var(--surf-2); font-size: calc(12.5px * var(--fs)); color: var(--ink-2); text-align: left; }
+.next:hover { background: var(--hover); }
+.next .lucide { width: 15px; height: 15px; color: var(--accent); }
+.next b { color: var(--ink); font-weight: 500; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.next .in { margin-left: auto; padding-left: 8px; color: var(--ink-3); font-size: calc(12px * var(--fs)); white-space: nowrap; font-variant-numeric: tabular-nums; }
+.pins + .foot { margin-top: 6px; }
+
+/* 搜不到、还没打字、正在记 */
+.qempty { display: flex; gap: 12px; align-items: center; padding: 14px 18px; color: var(--ink-2); font-size: calc(13px * var(--fs)); }
+.qempty .cat { width: 54px; height: 48px; }
+.qempty.plain { padding: 12px 16px; color: var(--ink-3); font-size: calc(12.5px * var(--fs)); }
+
+/* 底下一行：只列这一刻有用的几个按键 */
+.foot { display: flex; gap: 6px 14px; align-items: center; min-height: 30px; padding: 5px 16px; border-top: 1px solid var(--line); font-size: calc(11.5px * var(--fs)); color: var(--ink-3); flex-wrap: wrap; }
+.foot:empty { display: none; }
+.foot span { display: inline-flex; gap: 4px; align-items: center; }
+.foot kbd { height: 18px; min-width: 18px; font-size: calc(10.5px * var(--fs)); }
+/* 开着空格启动、这会儿按空格能打开程序时多出来的「空格」 */
+.foot kbd.new { color: var(--accent-ink); }
+
+/* 记好了：框缩成一行，团子猫蹦一下；关掉团子猫时是绿色的勾 */
+.saved { width: 520px; margin: 0 auto; background: var(--surf); border-radius: var(--r-lg); box-shadow: var(--sh-3); display: flex; align-items: center; gap: 12px; padding: 10px 16px; }
+.saved .cat { width: 40px; height: 36px; }
+.saved .nocat { width: 28px; height: 28px; border-radius: 50%; background: var(--ok); color: var(--surf); flex: none; }
+.saved .nocat .lucide { width: 16px; height: 16px; stroke-width: 2.5; }
+.saved .m { flex: 1; min-width: 0; }
+.saved b { display: block; font-size: calc(14px * var(--fs)); }
+.saved .m span { display: block; font-size: calc(12px * var(--fs)); color: var(--ink-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.saved .undo { flex: none; border: 0; background: none; padding: 4px 6px; border-radius: var(--r-sm); color: var(--accent-ink); font-weight: 500; font-size: calc(12.5px * var(--fs)); }
+.saved .undo:hover { background: var(--hover); }
+.saved .undo:disabled { color: var(--ink-3); }
+
+/* 右键菜单（程序、常用）和起别名 */
+.qmenu { position: absolute; z-index: 10; width: 220px; animation: qb-in var(--t-fast) var(--ease) both; }
+.qmenu .mi small { margin-left: auto; color: var(--ink-3); font-size: calc(11px * var(--fs)); max-width: 80px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.qmenu .alias { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 6px; padding: 6px; }
+.qmenu .alias label { grid-column: 1 / -1; font-size: calc(12px * var(--fs)); color: var(--ink-2); }
+.qmenu .alias .field { height: 28px; font-size: calc(12.5px * var(--fs)); }
+.qmenu .alias .btn { height: 28px; }

@@ -1,0 +1,131 @@
+/* 叮咪的设计变量：三种风格（需求-0.2 第 29 节、design/ui/u14-styles.html），每种浅色深色各一套。
+   根元素上的属性由 lib/look.ts 设：data-style = warm（默认，可以不写）/ simple / calm；data-mode = light / dark（「跟随系统」时它按系统换）；
+   data-motion = on 照常动 / system 跟着 Windows 的「动画效果」/ reduce 不动。界面只用这里的变量，不写死颜色、圆角、阴影、动效 */
+
+/* 文渊圆体裁出来的（2026-11-08 从资源圆体换过来），见 scripts/build-font.py；许可证在 fonts/OFL.txt */
+@font-face {
+  font-family: "Dingmi Rounded";
+  src: url("../fonts/dingmi-rounded.woff2") format("woff2");
+  font-weight: 400 700;
+  font-display: block;
+}
+
+/* ---------- 暖云母（默认） ---------- */
+:root {
+  --bg: #f6f1ec; --surf: #fffcf8; --surf-2: #fbf6f1; --hover: #f5ede6; --press: #eee4db; --line: #efe6dd; --line-2: #e2d6ca;
+  --ink: #2a2421; --ink-2: #6f655e; --ink-3: #9a8f87; --ink-4: #c4bab2;
+  --accent: #f07326; --accent-hover: #e2661b; --accent-press: #cf5a12; --accent-soft: #fdeadc; --accent-ink: #c4560f; --on-accent: #ffffff;
+  --ok: #1f9d63; --ok-soft: #e3f4ea; --warn: #b77400; --warn-soft: #fdf1d9; --danger: #df3f45; --danger-soft: #fde6e5; --info: #3b7cf0; --info-soft: #e5eefd;
+  --tc-blue: #3b7cf0; --tc-orange: #f0892e; --tc-pink: #d9508a; --tc-purple: #8a63e8; --tc-green: #2f9e5b; --tc-teal: #1a9aa8; --tc-red: #e0483e; --tc-amber: #c99412; --tc-gray: #8a8a94;
+  --sh-1: 0 1px 2px rgba(60,35,15,.06), 0 0 0 1px rgba(90,60,30,.07);
+  --sh-2: 0 10px 24px -14px rgba(60,35,15,.35), 0 0 0 1px rgba(90,60,30,.08);
+  --sh-3: 0 22px 48px -18px color-mix(in srgb, var(--accent) 28%, rgba(50,30,15,.5)), 0 0 0 1px rgba(90,60,30,.09);
+  --sh-accent: 0 4px 10px -4px color-mix(in srgb, var(--accent) 70%, transparent);
+  --scrim: rgba(40, 25, 15, .22);
+  /* 开场白（晨光橘）、收尾（暮色紫）顶上的渐变 */
+  --sky: #ffe6da; --dusk: #e5e4ff;
+  /* 团子猫的颜色不跟风格变 */
+  --cat-ear: #ffab45; --cat-line: #3b2418; --cat-body: #fffaf3;
+
+  --r-xs: 4px; --r-sm: 6px; --r-md: 9px; --r-lg: 14px; --r-pill: 999px;
+  --f-ui: "Dingmi Rounded", "Segoe UI Variable Text", "Segoe UI", "Microsoft YaHei UI", "PingFang SC", system-ui, sans-serif;
+  --f-mono: "Cascadia Mono", Consolas, "Microsoft YaHei UI", monospace;
+  /* 字号倍数和字距：圆体在 Windows 小字号下没有微调，偏细偏瘦，放大一号（13 → 14）、字距松一点更好读（2026-11-06 试用后定）。
+     各样式文件里的字号都写成 calc(13px * var(--fs)) */
+  --fs: 1.077; --ls: .02em;
+  --t-fast: 120ms; --t-mid: 180ms; --t-slow: 260ms; --ease: cubic-bezier(.2,.8,.2,1);
+  /* 卡片、弹窗进场：从下面多远、从多小 */
+  --enter-y: 14px; --enter-s: .96;
+  color-scheme: light;
+}
+:root[data-mode="dark"] {
+  --bg: #17130f; --surf: #231e1a; --surf-2: #2a2420; --hover: #2f2823; --press: #382f29; --line: #352d27; --line-2: #463b33;
+  --ink: #f4eee9; --ink-2: #c3b8b0; --ink-3: #8f857d; --ink-4: #5e554e;
+  --accent: #ff8a45; --accent-hover: #ff9a5c; --accent-press: #f07c36; --accent-soft: #43281a; --accent-ink: #ffa36b; --on-accent: #1a0e06;
+  --ok: #3ccf8e; --ok-soft: #173326; --warn: #f3c56b; --warn-soft: #3a2c10; --danger: #ff6369; --danger-soft: #3e1d1e; --info: #6d9cff; --info-soft: #1c2840;
+  --tc-blue: #6d9cff; --tc-orange: #ffa25e; --tc-pink: #f07aa8; --tc-purple: #a88bff; --tc-green: #4fcf85; --tc-teal: #3fc6d2; --tc-red: #ff7068; --tc-amber: #e8b93a; --tc-gray: #9a9aa4;
+  --sh-1: 0 0 0 1px rgba(255,240,225,.07);
+  --sh-2: 0 12px 26px -14px rgba(0,0,0,.7), 0 0 0 1px rgba(255,240,225,.08);
+  --sh-3: 0 22px 48px -18px rgba(0,0,0,.75), 0 0 0 1px rgba(255,240,225,.09);
+  --sh-accent: 0 4px 10px -4px color-mix(in srgb, var(--accent) 50%, transparent);
+  --scrim: rgba(0, 0, 0, .5);
+  --sky: #452a20; --dusk: #2b2b4d;
+  color-scheme: dark;
+}
+
+/* ---------- 简洁：黑白灰，橘色只留给时间、链接这类小字；圆角小、几乎没有阴影、系统字体、动效快 ---------- */
+:root[data-style="simple"] {
+  --bg: #f4f4f5; --surf: #ffffff; --surf-2: #f7f7f8; --hover: #f0f0f1; --press: #e7e7e9; --line: #ebebed; --line-2: #dcdce0;
+  --ink: #1d1d1f; --ink-2: #5f5f66; --ink-3: #8e8e95; --ink-4: #c2c2c7;
+  --accent: #1d1d1f; --accent-hover: #333336; --accent-press: #000000; --accent-soft: #ededef; --accent-ink: #c4560f; --on-accent: #ffffff;
+  --ok: #1f9d63; --ok-soft: #e6f4ec; --warn: #b77400; --warn-soft: #fbf2df; --danger: #df3f45; --danger-soft: #fce8e8; --info: #3b7cf0; --info-soft: #e8effc;
+  --tc-blue: #3b7cf0; --tc-orange: #e8822a; --tc-pink: #d9508a; --tc-purple: #8a63e8; --tc-green: #2f9e5b; --tc-teal: #1a9aa8; --tc-red: #e0483e; --tc-amber: #c99412; --tc-gray: #8a8a94;
+  --sh-1: 0 0 0 1px #e4e4e7;
+  --sh-2: 0 8px 20px -14px rgba(0,0,0,.22), 0 0 0 1px rgba(0,0,0,.09);
+  --sh-3: 0 16px 36px -20px rgba(0,0,0,.32), 0 0 0 1px rgba(0,0,0,.11);
+  --sh-accent: none;
+  --scrim: rgba(20, 20, 25, .2);
+  --sky: #f1ece8; --dusk: #ebebf3;
+
+  --r-xs: 3px; --r-sm: 4px; --r-md: 6px; --r-lg: 8px;
+  --f-ui: "Segoe UI Variable Text", "Segoe UI", "Microsoft YaHei UI", "PingFang SC", system-ui, sans-serif;
+  /* 简洁用系统字体，本来就清楚，不放大 */
+  --fs: 1; --ls: 0;
+  --t-fast: 90ms; --t-mid: 130ms; --t-slow: 180ms; --ease: cubic-bezier(.3,0,.2,1);
+  --enter-y: 6px; --enter-s: 1;
+}
+:root[data-style="simple"][data-mode="dark"] {
+  --bg: #111113; --surf: #1b1b1e; --surf-2: #222226; --hover: #26262a; --press: #2e2e33; --line: #2a2a2f; --line-2: #3a3a40;
+  --ink: #ededef; --ink-2: #a8a8b0; --ink-3: #7a7a82; --ink-4: #4d4d54;
+  --accent: #ededef; --accent-hover: #ffffff; --accent-press: #d0d0d4; --accent-soft: #2c2c31; --accent-ink: #ff9a5c; --on-accent: #111113;
+  --ok: #3ccf8e; --ok-soft: #16291f; --warn: #f3c56b; --warn-soft: #33290f; --danger: #ff6369; --danger-soft: #361a1c; --info: #6d9cff; --info-soft: #1a2438;
+  --tc-blue: #6d9cff; --tc-orange: #ffa25e; --tc-pink: #f07aa8; --tc-purple: #a88bff; --tc-green: #4fcf85; --tc-teal: #3fc6d2; --tc-red: #ff7068; --tc-amber: #e8b93a; --tc-gray: #9a9aa4;
+  --sh-1: 0 0 0 1px rgba(255,255,255,.08);
+  --sh-2: 0 10px 22px -14px rgba(0,0,0,.7), 0 0 0 1px rgba(255,255,255,.09);
+  --sh-3: 0 18px 40px -20px rgba(0,0,0,.8), 0 0 0 1px rgba(255,255,255,.11);
+  --sh-accent: none;
+  --scrim: rgba(0, 0, 0, .5);
+  --sky: #2a2522; --dusk: #24242c;
+}
+
+/* ---------- 安静：低饱和灰绿；圆角更圆、阴影很淡、动效慢，只淡入淡出 ---------- */
+:root[data-style="calm"] {
+  --bg: #edf1ee; --surf: #f9fbf9; --surf-2: #f2f6f3; --hover: #e9efeb; --press: #e0e8e3; --line: #e2e9e4; --line-2: #d0dbd4;
+  --ink: #24302a; --ink-2: #5b6a62; --ink-3: #85928b; --ink-4: #bcc6c0;
+  --accent: #3f7d66; --accent-hover: #376f5a; --accent-press: #2f614e; --accent-soft: #deebe4; --accent-ink: #2f6b55; --on-accent: #ffffff;
+  --ok: #2f8a5c; --ok-soft: #e0eee6; --warn: #a06d12; --warn-soft: #f4eedc; --danger: #c4474b; --danger-soft: #f6e3e2; --info: #3f73b8; --info-soft: #e2eaf4;
+  --tc-blue: #4f7fbf; --tc-orange: #c98545; --tc-pink: #bf6390; --tc-purple: #8470c4; --tc-green: #3f8f62; --tc-teal: #2f8c93; --tc-red: #c45a50; --tc-amber: #a98a2a; --tc-gray: #87908b;
+  --sh-1: 0 1px 2px rgba(30,50,40,.05), 0 0 0 1px rgba(40,70,55,.07);
+  --sh-2: 0 10px 24px -16px rgba(30,50,40,.28), 0 0 0 1px rgba(40,70,55,.08);
+  --sh-3: 0 22px 48px -20px rgba(30,50,40,.38), 0 0 0 1px rgba(40,70,55,.09);
+  --sh-accent: 0 4px 10px -5px rgba(63,125,102,.45);
+  --scrim: rgba(20, 35, 28, .2);
+  --sky: #f3eadf; --dusk: #e3e6f0;
+
+  --r-xs: 5px; --r-sm: 7px; --r-md: 10px; --r-lg: 16px;
+  --t-fast: 160ms; --t-mid: 240ms; --t-slow: 340ms; --ease: cubic-bezier(.25,.6,.3,1);
+  --enter-y: 8px; --enter-s: 1;
+}
+:root[data-style="calm"][data-mode="dark"] {
+  --bg: #121614; --surf: #1a201d; --surf-2: #202723; --hover: #252d29; --press: #2c3530; --line: #29312d; --line-2: #37413b;
+  --ink: #e6ece8; --ink-2: #a9b5ae; --ink-3: #7c8881; --ink-4: #4e5852;
+  --accent: #7fbfa2; --accent-hover: #8fcbb0; --accent-press: #6fb093; --accent-soft: #22352c; --accent-ink: #92cdb2; --on-accent: #0d1a14;
+  --ok: #5cc08c; --ok-soft: #173024; --warn: #d9b45f; --warn-soft: #322a14; --danger: #e57a78; --danger-soft: #3a2021; --info: #7ea6dc; --info-soft: #1c2636;
+  --tc-blue: #7ea6dc; --tc-orange: #e0a46c; --tc-pink: #dc8bb0; --tc-purple: #a796e0; --tc-green: #6cc08e; --tc-teal: #5fbcc2; --tc-red: #e48a80; --tc-amber: #d4b55a; --tc-gray: #9aa39e;
+  --sh-1: 0 0 0 1px rgba(220,255,235,.06);
+  --sh-2: 0 12px 26px -14px rgba(0,0,0,.65), 0 0 0 1px rgba(220,255,235,.07);
+  --sh-3: 0 22px 48px -18px rgba(0,0,0,.7), 0 0 0 1px rgba(220,255,235,.08);
+  --sh-accent: 0 4px 10px -5px rgba(127,191,162,.35);
+  --scrim: rgba(0, 0, 0, .5);
+  --sky: #2a2a20; --dusk: #20242e;
+}
+
+/* ---------- 减少动画：设置里选了「减少动画」，或者选「跟随 Windows」而 Windows 关了动画效果 ---------- */
+:root[data-motion="reduce"] { --t-fast: 0ms; --t-mid: 0ms; --t-slow: 0ms; --enter-y: 0px; --enter-s: 1; }
+:root[data-motion="reduce"] *, :root[data-motion="reduce"] *::before, :root[data-motion="reduce"] *::after {
+  animation-duration: 0s !important; animation-iteration-count: 1 !important; transition-duration: 0s !important;
+}
+@media (prefers-reduced-motion: reduce) {
+  :root[data-motion="system"] { --t-fast: 0ms; --t-mid: 0ms; --t-slow: 0ms; --enter-y: 0px; --enter-s: 1; }
+  :root[data-motion="system"] *, :root[data-motion="system"] *::before, :root[data-motion="system"] *::after { animation-duration: 0s !important; animation-iteration-count: 1 !important; transition-duration: 0s !important; }
+}

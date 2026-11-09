@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>叮咪笔记</title>
+  <script type="module" src="/pages/note.ts"></script>
+</head>
+<body>
+  <!-- 按钮上的图标、提示文字由 note.ts 填（text/notes.ts） -->
+  <div class="nwin">
+    <header class="ntb" data-tauri-drag-region>
+      <button class="tb" id="t-outline" aria-pressed="true"></button>
+      <span class="ntt" id="wtitle" data-tauri-drag-region></span>
+      <button class="tb" id="t-pin" aria-pressed="false"></button>
+      <button class="tb" id="t-preview" aria-pressed="false"></button>
+      <button class="tb" id="t-focus"></button>
+      <span class="wsep"></span>
+      <div class="wctl"><button id="w-min"></button><button id="w-max"></button><button id="w-close" class="close"></button></div>
+    </header>
+    <div class="nbar" id="nbar" hidden></div>
+    <div class="nbody">
+      <nav class="outline" id="outline"></nav>
+      <main class="ncol" id="ncol">
+        <div class="ndoc">
+          <div class="ed-bar" id="bar"><span class="sp"></span><span class="saved" id="state"></span><button class="btn sm" id="b-tidy"></button><button class="btn sm ghost icon" id="b-more"></button></div>
+          <div class="banner ok" id="aibar" hidden></div>
+          <input id="title" autocomplete="off" spellcheck="false">
+          <div class="meta" id="meta"></div>
+          <div class="ne" id="ed"></div>
+        </div>
+      </main>
+      <article class="preview dmd" id="preview" hidden></article>
+    </div>
+  </div>
+  <div class="toast plain" id="toast" hidden></div>
+</body>
+</html>

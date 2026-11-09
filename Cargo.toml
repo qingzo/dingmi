@@ -1,0 +1,31 @@
+[workspace]
+resolver = "2"
+members = ["apps/desktop/src-tauri", "apps/server", "crates/sync"]
+
+# 同步密码换算密钥（Argon2）在调试版里也要快，不然测试和开发时每次要等好几秒
+[profile.dev.package.argon2]
+opt-level = 3
+
+[profile.dev.package.blake2]
+opt-level = 3
+
+# 发布新版本时解开签名私钥（scrypt）
+[profile.dev.package.scrypt]
+opt-level = 3
+
+[profile.dev.package.salsa20]
+opt-level = 3
+
+# 电脑端：出错直接退出（panic = abort），程序小一些
+[profile.release]
+codegen-units = 1
+lto = true
+opt-level = "s"
+panic = "abort"
+strip = true
+
+# 服务器：一个连接出错不能把整个服务带走，所以不 abort。
+# 编译：cargo zigbuild --profile server --target x86_64-unknown-linux-musl -p dingmi-server
+[profile.server]
+inherits = "release"
+panic = "unwind"

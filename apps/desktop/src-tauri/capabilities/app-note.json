@@ -1,0 +1,28 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "app-note",
+  "description": "note-* 窗口能调的叮咪命令（node scripts/caps.mjs --write 按页面代码生成，别手改）",
+  "windows": [
+    "note-*"
+  ],
+  "permissions": [
+    "allow-ai-parse",
+    "allow-ai-tidy-note",
+    "allow-attachment-dir",
+    "allow-delete-reminder",
+    "allow-get-note",
+    "allow-get-settings",
+    "allow-list-attachments",
+    "allow-list-devices",
+    "allow-list-reminders",
+    "allow-open-attachment",
+    "allow-open-main-nav",
+    "allow-open-url",
+    "allow-pin-note",
+    "allow-reminder-action",
+    "allow-save-attachment",
+    "allow-save-attachment-as",
+    "allow-save-note",
+    "allow-save-reminder"
+  ]
+}

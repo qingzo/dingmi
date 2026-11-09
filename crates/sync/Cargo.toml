@@ -1,0 +1,17 @@
+[package]
+name = "dingmi-sync"
+version = "0.1.0"
+description = "叮咪电脑端和服务端共用的同步协议：消息格式、Noise 加密连接、配对码"
+edition = "2021"
+license = "AGPL-3.0-only"
+
+[dependencies]
+base64 = "0.22"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+sha1 = "0.10"
+snow = "0.9"
+tokio = { version = "1", features = ["io-util"] }
+
+[dev-dependencies]
+tokio = { version = "1", features = ["io-util", "macros", "rt"] }

@@ -1,0 +1,34 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "app-widget",
+  "description": "widget 窗口能调的叮咪命令（node scripts/caps.mjs --write 按页面代码生成，别手改）",
+  "windows": [
+    "widget"
+  ],
+  "permissions": [
+    "allow-ai-parse",
+    "allow-delete-note",
+    "allow-delete-reminder",
+    "allow-fit-window",
+    "allow-folder-peek",
+    "allow-get-settings",
+    "allow-launcher-list",
+    "allow-launcher-open",
+    "allow-launcher-save",
+    "allow-launcher-stats",
+    "allow-list-devices",
+    "allow-list-notes",
+    "allow-list-reminders",
+    "allow-open-main-nav",
+    "allow-open-path",
+    "allow-open-window",
+    "allow-pick-path",
+    "allow-reminder-action",
+    "allow-save-note",
+    "allow-save-reminder",
+    "allow-trash-action",
+    "allow-widget-off",
+    "allow-widget-place",
+    "allow-widget-show"
+  ]
+}

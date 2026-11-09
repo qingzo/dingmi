@@ -1,0 +1,24 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "app-remind",
+  "description": "remind 窗口能调的叮咪命令（node scripts/caps.mjs --write 按页面代码生成，别手改）",
+  "windows": [
+    "remind"
+  ],
+  "permissions": [
+    "allow-ai-parse",
+    "allow-fit-window",
+    "allow-focus-batch",
+    "allow-get-queue",
+    "allow-get-settings",
+    "allow-list-devices",
+    "allow-list-notes",
+    "allow-list-reminders",
+    "allow-open-note-window",
+    "allow-reminder-action",
+    "allow-reminder-changed-on",
+    "allow-save-note",
+    "allow-save-reminder",
+    "allow-show-quiet"
+  ]
+}

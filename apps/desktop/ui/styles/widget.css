@@ -1,0 +1,167 @@
+/* 桌面组件（UI设计.md U8、design/ui/u8-widget.html）。只用 tokens.css 的变量。
+   不透明（默认）：窗口是透明的，卡片自己画；四周留透明的边给阴影，上面给团子猫探头，边的大小和 win.rs 的 WIDGET_SIDE / WIDGET_PEEK / WIDGET_TOP 一样。
+   毛玻璃（body.glass）：窗口就是卡片，底是 Windows 的毛玻璃（desk.rs），系统给细边框和圆角 */
+html, body.widget { background: transparent; }
+body.widget { overflow: hidden; -webkit-user-select: none; user-select: none; height: auto; }
+
+.wrap { padding: 40px 16px 28px; }
+:root[data-mascot="off"] .wrap { padding-top: 12px; }
+body.glass .wrap { padding: 0; }
+
+/* ---------- 卡片 ---------- */
+.wg { --wr: calc(var(--r-lg) + 2px);
+  position: relative; width: 300px; padding: 14px 14px 12px; display: grid; gap: 10px;
+  /* 列宽要写死：默认的列会被不换行的长标题撑宽，整张卡片的右边（⋯、时间、输入框）跑到窗口外面去 */
+  grid-template-columns: minmax(0, 1fr);
+  background: var(--surf); border-radius: var(--wr); box-shadow: var(--sh-2); }
+/* 毛玻璃上：底透出来，灰字加深、浅底换成半透明的，免得被壁纸吃掉 */
+body.glass .wg { background: transparent; border-radius: 0; box-shadow: none;
+  --ink-2: color-mix(in srgb, var(--ink) 80%, var(--surf));
+  --ink-3: color-mix(in srgb, var(--ink) 64%, var(--surf));
+  --line-2: color-mix(in srgb, var(--ink) 24%, transparent);
+  --hover: color-mix(in srgb, var(--ink) 8%, transparent);
+  --surf-2: color-mix(in srgb, var(--surf) 55%, transparent);
+  --accent-soft: color-mix(in srgb, var(--accent) 16%, transparent);
+  --ok-soft: color-mix(in srgb, var(--ok) 16%, transparent); }
+
+/* 团子猫从右上方的顶边探出头：下半身藏在卡片后面 */
+.peek { position: absolute; right: 26px; top: -40px; width: 64px; height: 56px; pointer-events: none; clip-path: inset(-40px -40px 16px -40px); }
+/* 毛玻璃时窗口外面画不了东西：猫坐进卡片里，在 ⋯ 左边 */
+body.glass .peek { top: 8px; right: 44px; width: 40px; height: 35px; clip-path: none; }
+:root[data-mascot="off"] .peek { display: none; }
+
+/* 日期和件数 */
+.hd { display: flex; align-items: baseline; gap: 8px; min-height: 30px; }
+.hd .d { font-size: calc(22px * var(--fs)); font-weight: 700; letter-spacing: -.01em; line-height: 1.3; }
+.hd .wd { font-size: calc(12.5px * var(--fs)); color: var(--ink-2); }
+.hd .more { margin-left: auto; align-self: center; width: 24px; height: 24px; display: grid; place-items: center; padding: 0; border: 0; border-radius: var(--r-sm); background: none; color: var(--ink-3); position: relative; z-index: 1; }
+.hd .more:hover, .hd .more[aria-expanded="true"] { background: var(--hover); color: var(--ink); }
+.sub { margin-top: -6px; font-size: calc(12.5px * var(--fs)); color: var(--ink-2); }
+.sub b { color: var(--accent-ink); font-weight: 500; }
+
+/* 下一条 */
+.next { display: flex; align-items: center; gap: 10px; padding: 9px 10px; border-radius: calc(var(--r-md) + 1px); background: var(--accent-soft); cursor: pointer; transition: filter var(--t-fast); }
+.next:hover { filter: brightness(.98); }
+.next .lucide { color: var(--accent-ink); }
+.next .m { flex: 1; min-width: 0; line-height: 1.45; }
+.next b { display: block; font-size: calc(13.5px * var(--fs)); font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.next small { font-size: calc(12px * var(--fs)); font-weight: 500; color: var(--accent-ink); }
+
+/* 白天全做完了 */
+.allok { display: flex; align-items: center; gap: 8px; padding: 10px; border-radius: calc(var(--r-md) + 1px); background: var(--ok-soft); font-size: calc(13px * var(--fs)); color: color-mix(in srgb, var(--ok) 70%, var(--ink)); }
+.allok .lucide { color: var(--ok); }
+
+/* 一块：今天、待看、常用。点标题收起 */
+.bh-row { display: flex; align-items: center; gap: 4px; }
+.bh-row .bh { flex: 1; min-width: 0; }
+.bh { display: flex; align-items: center; gap: 4px; width: 100%; height: 20px; margin: 0 0 2px; padding: 0 2px; border: 0; border-radius: var(--r-xs); background: none; font-size: calc(11.5px * var(--fs)); font-weight: 500; color: var(--ink-3); text-align: left; }
+.bh:hover { color: var(--ink-2); }
+.bh .lucide { width: 12px; height: 12px; }
+.bh .n { margin-left: auto; display: grid; transition: transform var(--t-mid) var(--ease); }
+.blk.closed .bh .n { transform: rotate(180deg); }
+.blk.closed .bd { display: none; }
+.bh-row .pe { height: 20px; padding: 0 6px; font-size: calc(11.5px * var(--fs)); color: var(--accent-ink); }
+
+/* 今天 */
+.it { display: flex; align-items: center; gap: 8px; height: 30px; padding: 0 2px; border-radius: var(--r-sm); font-size: calc(13px * var(--fs)); cursor: pointer; }
+.it:hover { background: var(--hover); }
+.it .t { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.it .tm { font-size: calc(12px * var(--fs)); color: var(--ink-2); }
+.it .tm.late { color: var(--danger); font-weight: 500; }
+.it .task { width: 16px; height: 16px; border-width: 1.5px; }
+body.glass .it .task { border-color: var(--ink-3); }
+.it .task .lucide { width: 10px; height: 10px; stroke-width: 3.2; }
+.it.done .task { background: var(--accent); border-color: var(--accent); color: var(--on-accent); }
+.it.done .t { color: var(--ink-3); text-decoration: line-through; }
+.it.done .tm { color: var(--ink-3); }
+.it.fixed .task { cursor: default; }
+.morelink { display: block; padding: 2px 0 0 26px; border: 0; background: none; font-size: calc(12px * var(--fs)); color: var(--ink-3); text-align: left; }
+.morelink:hover { color: var(--ink-2); }
+.none { padding: 2px 2px 4px; font-size: calc(12px * var(--fs)); color: var(--ink-3); }
+
+/* 待看 */
+.rd { display: flex; align-items: center; gap: 8px; height: 28px; padding-right: 2px; border-radius: var(--r-sm); font-size: calc(12.5px * var(--fs)); cursor: pointer; }
+.rd:hover { background: var(--hover); }
+.rd .sq { width: 6px; height: 6px; flex: none; margin: 0 5px 0 4px; border-radius: 2px; background: var(--c, var(--tc-orange)); }
+.rd .t { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.rd small { flex: none; max-width: 40%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: calc(11.5px * var(--fs)); color: var(--ink-3); }
+
+/* 常用：一行 6 个（lib/pins.ts） */
+.pins { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 4px; }
+.pin { position: relative; display: grid; justify-items: center; gap: 2px; min-width: 0; padding: 5px 0 3px; border: 0; border-radius: calc(var(--r-sm) + 2px); background: none; font-size: calc(10.5px * var(--fs)); color: var(--ink-2); }
+.pin:hover, .pin.open { background: var(--hover); color: var(--ink); }
+.pin .a { position: relative; width: 30px; height: 30px; display: grid; place-items: center; }
+.pin .lic { width: 30px; height: 30px; border-radius: calc(var(--r-sm) + 2px); }
+.pin .nm { max-width: 100%; padding: 0 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.pin.gone .a { opacity: .4; }
+.pin.add .lic { color: var(--ink-3); border: 1px dashed var(--ink-3); background: none; }
+/* 文件夹右下角的小箭头：点开看里面最新的几个文件 */
+.pin .fo { position: absolute; right: -4px; bottom: -3px; width: 14px; height: 14px; display: grid; place-items: center; border-radius: var(--r-xs); background: var(--surf); box-shadow: var(--sh-1); color: var(--ink-2); }
+.pin .fo:hover, .pin.open .fo { color: var(--accent-ink); }
+.pin .fo .lucide { width: 9px; height: 9px; stroke-width: 2.5; transition: transform var(--t-fast); }
+.pin.open .fo .lucide { transform: rotate(180deg); }
+/* 编辑：右上角拿掉，按住拖动换顺序 */
+.pin .x { position: absolute; top: -5px; right: -6px; width: 16px; height: 16px; display: none; place-items: center; border-radius: 50%; background: var(--ink-3); color: var(--surf); }
+.pin .x .lucide { width: 10px; height: 10px; stroke-width: 2.6; }
+.pin .x:hover { background: var(--danger); color: #fff; }
+.pins.editing .x { display: grid; }
+.pins.editing .fo { display: none; }
+.pins.editing .pin:not(.add) { cursor: grab; touch-action: none; }
+.pins.editing .pin:not(.add) .a { animation: wob .5s ease-in-out infinite alternate; }
+.pins.editing .pin:nth-child(2n) .a { animation-delay: -.25s; }
+@keyframes wob { from { rotate: -2.5deg; } to { rotate: 2.5deg; } }
+.pin.dragging { opacity: .35; }
+.pin.before { box-shadow: inset 3px 0 0 -1px var(--accent); }
+.pin-msg { margin-top: 4px; font-size: calc(11.5px * var(--fs)); color: var(--ok); }
+.pin-msg.bad { color: var(--danger); }
+.drophint { margin-top: 6px; padding: 10px; border-radius: var(--r-md); border: 1.5px dashed var(--accent); background: var(--accent-soft); color: var(--accent-ink); font-size: calc(12px * var(--fs)); text-align: center; }
+
+/* 启动器那一套图标（launch.ts iconHtml）：系统给的图片，或者画一个 */
+.lic { width: 28px; height: 28px; flex: none; display: grid; place-items: center; border-radius: var(--r-sm); object-fit: contain; }
+.lic svg { width: 16px; height: 16px; stroke: currentColor; fill: none; stroke-width: 1.75; stroke-linecap: round; stroke-linejoin: round; }
+.lic.txt { background: var(--surf-2); box-shadow: inset 0 0 0 1px var(--line-2); color: var(--ink-2); font-weight: 700; font-size: calc(12px * var(--fs)); }
+.lic.folder { color: var(--tc-amber); background: color-mix(in srgb, var(--tc-amber) 16%, transparent); }
+.lic.link { color: var(--tc-blue); background: color-mix(in srgb, var(--tc-blue) 13%, transparent); }
+.lic.file { color: var(--ink-2); background: var(--surf-2); }
+
+/* 常用下面展开的：文件夹里的文件、添加、加网址 */
+.pin-pop { margin-top: 4px; padding: 4px 6px; border-radius: calc(var(--r-md) + 1px); background: var(--surf-2); box-shadow: inset 0 0 0 1px var(--line); animation: pop var(--t-mid) var(--ease); -webkit-user-select: text; user-select: text; }
+@keyframes pop { from { opacity: 0; transform: translateY(-4px); } }
+.fr { display: flex; align-items: center; gap: 8px; width: 100%; min-height: 26px; padding: 0 4px; border: 0; border-radius: var(--r-sm); background: none; font-size: calc(12px * var(--fs)); text-align: left; }
+.fr:hover, .fr.on { background: var(--hover); }
+.fr > .lucide { width: 14px; height: 14px; color: var(--ink-3); }
+.fr .lic { width: 20px; height: 20px; border-radius: var(--r-xs); }
+.fr .lic svg { width: 12px; height: 12px; }
+.fr .fn { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.fr .fn mark { background: none; color: var(--accent-ink); font-weight: 700; }
+.fr small { flex: none; font-size: calc(11px * var(--fs)); color: var(--ink-3); }
+.pp-more { padding: 3px 4px; font-size: calc(11.5px * var(--fs)); color: var(--ink-3); }
+.pp-more.bad { color: var(--danger); }
+.pin-pop .field { display: flex; width: 100%; height: 30px; margin: 2px 0 4px; font-size: calc(12px * var(--fs)); }
+.pp-acts { display: flex; gap: 4px; padding: 4px 0 2px; }
+.pp-acts .btn { flex: 1; min-width: 0; padding: 0 6px; }
+
+/* 输入框 */
+.in { display: flex; align-items: center; gap: 8px; height: 34px; padding: 0 10px; border-radius: calc(var(--r-md) + 1px); border: 1px solid var(--line-2); background: var(--surf-2); cursor: text; transition: border-color var(--t-fast), box-shadow var(--t-fast); }
+.in .lucide { width: 14px; height: 14px; color: var(--accent); }
+.in input { flex: 1; min-width: 0; height: 100%; padding: 0; border: 0; outline: 0; background: transparent; font-size: calc(12.5px * var(--fs)); -webkit-user-select: text; user-select: text; }
+.in input::placeholder { color: var(--ink-3); }
+.in input:disabled { opacity: .7; }
+.in:focus-within { border-color: var(--accent); background: var(--surf); box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 18%, transparent); }
+.in input:focus-visible { outline: 0; }
+.pv { display: flex; flex-wrap: wrap; align-items: center; gap: 0 4px; margin-top: 6px; padding-left: 4px; font-size: calc(11.5px * var(--fs)); color: var(--ink-3); }
+.pv:empty { display: none; }
+.pv b { color: var(--accent-ink); font-weight: 500; }
+.pv.ok { color: var(--ok); }
+.pv.bad { color: var(--danger); }
+.pv .spin { width: 10px; height: 10px; border-width: 1.5px; color: var(--accent); margin-right: 2px; }
+
+/* ⋯ 菜单 */
+.wg .menu { position: absolute; right: 10px; top: 42px; z-index: 3; width: 180px; min-width: 0; animation: pop var(--t-fast) var(--ease); }
+
+/* 移动位置：主色虚线框起来，按住哪里都能拖；下面一条「放回右上角」「好了」 */
+body.moving .wg { outline: 2px dashed var(--accent); outline-offset: 4px; cursor: move; }
+body.glass.moving .wg { outline-offset: -4px; }
+body.moving .wg * { pointer-events: none; }
+.movebar { display: flex; align-items: center; justify-content: center; gap: 6px; width: fit-content; margin: 14px auto 0; padding: 4px 4px 4px 12px; border-radius: var(--r-pill); background: var(--surf); box-shadow: var(--sh-2); font-size: calc(12px * var(--fs)); color: var(--ink-2); cursor: move; }
+body.glass .movebar { margin: 0 auto 10px; box-shadow: none; background: transparent; }

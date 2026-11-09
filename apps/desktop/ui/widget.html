@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>叮咪桌面组件</title>
+  <script type="module" src="/pages/widget.ts"></script>
+</head>
+<!-- 字和图标都由 widget.ts 填（text/widget.ts、shared/icons.ts）；样子照 design/ui/u8-widget.html -->
+<body class="widget">
+  <div class="wrap" id="wrap">
+    <div class="wg" id="w">
+      <span class="peek mascot" id="peek" aria-hidden="true"></span>
+      <div class="hd">
+        <span class="d num" id="w-day"></span><span class="wd" id="w-wd"></span>
+        <button class="more" id="menu-btn" aria-haspopup="menu" aria-expanded="false"></button>
+      </div>
+      <div class="sub" id="w-sub"></div>
+      <div class="menu" id="menu" role="menu" hidden></div>
+
+      <div class="next" id="next" data-part="next" hidden></div>
+      <div class="allok" id="allok" hidden></div>
+
+      <div class="blk" id="sec-today" data-part="today">
+        <button class="bh" data-fold="today"></button>
+        <div class="bd" id="today"></div>
+      </div>
+
+      <div class="blk" id="sec-toread" data-part="toread">
+        <button class="bh" data-fold="toread"></button>
+        <div class="bd" id="toread"></div>
+      </div>
+
+      <div class="blk" id="sec-pins" data-part="pins">
+        <div class="bh-row"><button class="bh" data-fold="pins"></button><button class="btn sm ghost pe" id="pins-edit" hidden></button></div>
+        <div class="bd">
+          <div class="pins" id="pins"></div>
+          <div class="pin-msg" id="pin-msg" hidden></div>
+          <div class="pin-pop" id="pin-pop" hidden></div>
+        </div>
+        <div class="drophint" id="drophint" hidden></div>
+      </div>
+
+      <form id="form" data-part="input">
+        <label class="in" id="in"><span id="in-ico"></span><input id="inp" autocomplete="off" spellcheck="false"></label>
+        <div class="pv" id="pre"></div>
+      </form>
+    </div>
+    <div class="movebar" id="movebar" hidden></div>
+  </div>
+</body>
+</html>

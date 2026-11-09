@@ -1,0 +1,18 @@
+name: 建议
+description: 想要的功能、觉得哪里不好用
+labels: ["建议"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        说说你平时怎么用、卡在哪里，比直接说「加一个按钮」更有用。作者一个人在做，会尽量看，不保证每条都回、都做。
+  - type: textarea
+    id: how
+    attributes:
+      label: 你平时怎么用，遇到了什么不方便
+    validations:
+      required: true
+  - type: textarea
+    id: want
+    attributes:
+      label: 你希望怎样

@@ -1,0 +1,18 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "app-qnote",
+  "description": "qnote 窗口能调的叮咪命令（node scripts/caps.mjs --write 按页面代码生成，别手改）",
+  "windows": [
+    "qnote"
+  ],
+  "permissions": [
+    "allow-ai-tidy-note",
+    "allow-attach-files",
+    "allow-attachment-dir",
+    "allow-fit-window",
+    "allow-get-settings",
+    "allow-open-main-nav",
+    "allow-save-attachment",
+    "allow-save-note"
+  ]
+}

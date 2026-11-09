@@ -1,0 +1,107 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>叮咪</title>
+  <script type="module" src="/pages/main.ts"></script>
+</head>
+<!-- 主窗口：只有框，字和图标都由 main.ts 填（text/main.ts、shared/icons.ts）；样子照 design/ui/u6-main.html -->
+<body class="mainwin">
+  <div class="frame">
+    <header class="tb" data-tauri-drag-region>
+      <span class="tb-brand" id="brand" data-tauri-drag-region><span class="logo" id="logo"></span><b data-t="brand" data-tauri-drag-region></b></span>
+      <button class="tb-search" id="tsearch" data-ic="search" data-tt="searchTip"><span data-t="search"></span><kbd>Ctrl K</kbd></button>
+      <span class="sp" data-tauri-drag-region></span>
+      <button class="tb-sync" id="tsync" data-tt="syncTip" hidden><i class="d"></i><span id="tsync-text"></span></button>
+      <div class="tb-wc">
+        <button id="w-min" data-ic="minus" data-tt="min"></button>
+        <button id="w-max" data-ic="square" data-tt="max"></button>
+        <button id="w-close" class="close" data-ic="x" data-tt="close"></button>
+      </div>
+    </header>
+    <div class="shell">
+      <nav class="sbar" aria-label="主导航">
+        <button class="nv" data-view="today" data-ic="sun" data-tt="today"><span class="lb" data-t="today"></span><span class="n hot num" id="n-today"></span></button>
+        <button class="nv" data-view="reminders" data-ic="bell" data-tt="reminders"><span class="lb" data-t="reminders"></span><span class="n num" id="n-rem"></span></button>
+        <button class="nv" data-view="notes" data-ic="notebook-pen" data-tt="notes"><span class="lb" data-t="notes"></span><span class="n num" id="n-notes"></span></button>
+        <div class="sb-sec"><span data-t="tagsSec"></span><button id="tags-edit" data-ic="pencil" data-tt="tagsEdit"></button></div>
+        <div class="sb-cats" id="side-tags"></div>
+        <div class="sb-grow"></div>
+        <div class="sb-focus" id="focus-row">
+          <button class="fi" id="focus-ico" data-ic="moon" data-tt="focusToggle"></button>
+          <span class="lb"><span data-t="focus"></span><small id="focus-desc"></small></span>
+          <button class="tog" role="switch" id="focus-sw" aria-checked="false" data-tt="focus"></button>
+        </div>
+        <button class="nv" data-view="settings" data-ic="settings" data-tt="settings"><span class="lb" data-t="settings"></span></button>
+      </nav>
+
+      <main class="panel" id="main">
+        <div class="banner" id="banner" hidden></div>
+
+        <!-- 今天 -->
+        <section class="pg" data-view="today">
+          <div class="vh"><h3 id="greet"></h3><span class="sub" id="today-sub"></span><span class="sp"></span><button class="btn" id="manual" data-ic="plus"><span data-t="newRem"></span></button></div>
+          <div class="vb">
+            <label class="capt"><span class="ci" data-ic="sparkles"></span><textarea id="cap" rows="1" data-tp="capPh" data-tt="capLabel"></textarea><span class="hint" id="cap-hint"></span></label>
+            <div class="pp" id="parse" hidden></div>
+            <!-- 上手清单（需求-0.2 第 5.2 节）放在这里，引导做好后填 -->
+            <div class="onb" id="onb" hidden></div>
+            <div class="ibox" id="inbox" hidden></div>
+            <div id="today-list"></div>
+          </div>
+        </section>
+
+        <!-- 提醒 -->
+        <section class="pg" data-view="reminders" hidden>
+          <div class="vh"><h3 data-t="reminders"></h3><span id="rem-tag"></span><span class="sub" id="rem-sub"></span><span class="sp"></span>
+            <div class="seg" id="rmode"><button data-rmode="todo" data-t="rmTodo"></button><button data-rmode="cycle" data-t="rmCycle"></button><button data-rmode="done" data-t="rmDone"></button></div>
+            <button class="btn pri" id="new-rem" data-ic="plus"><span data-t="newRem"></span></button></div>
+          <div class="vb" id="rem-groups"></div>
+        </section>
+
+        <!-- 笔记本：笔记 / 待办 -->
+        <section class="pg" data-view="notes" hidden>
+          <div class="vh"><h3 data-t="notes"></h3><span class="sub" id="nb-count"></span><span class="sp"></span>
+            <div class="seg" id="nb-mode"><button data-mode="notes" data-t="nbNotes"></button><button data-mode="todos" id="nb-todo-btn" data-t="todos"></button></div>
+            <button class="btn pri" id="new-note" data-ic="plus"><span data-t="newNote"></span></button></div>
+          <div class="vb" id="nb-todos" hidden></div>
+          <div class="nbk" id="nbk">
+            <div class="nbk-l">
+              <label class="field nbs" data-ic="search"><input id="nb-search" data-tp="nbSearch" data-tt="nbSearch"></label>
+              <div class="nbcs" id="nb-cats" role="group"></div>
+              <div class="nbk-items" id="nb-items"></div>
+            </div>
+            <article class="nbk-doc" id="nb-doc"></article>
+          </div>
+        </section>
+
+        <!-- 设置（settings.ts 填） -->
+        <section class="pg" data-view="settings" hidden></section>
+
+        <!-- 回收站（从 设置 → 数据 进来） -->
+        <section class="pg" data-view="trash" hidden>
+          <div class="vh"><button class="btn ghost icon" id="trash-back" data-ic="chevron-left" data-tt="back"></button><h3 data-t="trash"></h3><span class="sub" data-t="trashSub"></span><span class="sp"></span><button class="btn ghost danger" id="trash-empty" data-t="trashEmpty"></button></div>
+          <div class="vb trash" id="trash-list"></div>
+        </section>
+
+        <!-- 改提醒的抽屉 -->
+        <div class="dim" id="ddim" hidden></div>
+        <form class="drawer" id="drawer" autocomplete="off" hidden></form>
+
+        <!-- Ctrl K 搜索 -->
+        <div class="dim" id="pdim" hidden></div>
+        <div class="palette" id="pal" hidden>
+          <label class="pin" data-ic="search"><input id="pal-in" data-tp="palPh" data-tt="palPh" autocomplete="off" spellcheck="false"><kbd>Esc</kbd></label>
+          <div class="res" id="pal-res"></div>
+        </div>
+      </main>
+    </div>
+  </div>
+
+  <div class="menu" id="menu" role="menu" hidden></div>
+  <div class="scrim" id="dlg" hidden></div>
+  <div class="scrim" id="modal" hidden></div>
+  <div class="toast plain" id="toast" role="status" hidden></div>
+</body>
+</html>

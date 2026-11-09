@@ -1,0 +1,114 @@
+/* 提醒卡片、每日开场白、每天收尾（U5，design/ui/u5-cards.html）。和 ui.css 一起用，只用 tokens.css 的变量。
+   窗口是透明的，卡片外面那圈 .stage 留给阴影；窗口大小跟着 .stage 量出来的高度变（fitWindow） */
+html, body { height: auto; background: transparent; overflow: hidden; }
+/* 提醒卡片在右下角：右边、下边 12 是离屏幕边和任务栏的距离，阴影到这里被屏幕边截掉；左上留给阴影。宽度和 win.rs 的 REMIND_W 对上 */
+.stage { padding: 16px 12px 12px 28px; }
+/* 开场白、收尾在屏幕中间偏下，四周都留阴影。宽度和 win.rs 的 CARD_W 对上 */
+.stage.mid { padding: 16px 28px 40px; }
+
+.lucide { stroke-width: 1.75; }
+.cards .btn { height: 30px; padding: 0 12px; font-size: calc(12.5px * var(--fs)); }
+.cards .btn .lucide { width: 14px; height: 14px; }
+.cards .btn.sm { height: 26px; padding: 0 9px; font-size: calc(12px * var(--fs)); }
+.cards .tag { height: 20px; padding: 0 8px; font-size: calc(11px * var(--fs)); gap: 4px; }
+.cards .tag .lucide { width: 11px; height: 11px; }
+.x { position: absolute; right: 8px; top: 8px; z-index: 1; width: 24px; height: 24px; border: 0; padding: 0; border-radius: var(--r-sm); background: none; color: var(--ink-3); display: grid; place-items: center; }
+.x:hover { background: var(--hover); color: var(--ink); }
+.x .lucide { width: 15px; height: 15px; }
+.msg { margin: 0; font-size: calc(11.5px * var(--fs)); color: var(--danger); }
+.msg:empty { display: none; }
+
+/* ================= 提醒卡片 ================= */
+/* grid 的列宽都写成 minmax(0, 1fr)：默认的列会被不换行的长标题撑宽，右边的时间、按钮跑到窗口外面去 */
+.card { width: 360px; background: var(--surf); border-radius: var(--r-lg); box-shadow: var(--sh-3); padding: 14px 14px 12px; display: grid; grid-template-columns: minmax(0, 1fr); gap: 8px; position: relative; outline: 0; }
+.card.in { animation: card-in var(--t-slow) var(--ease) both; }
+.card.leave { animation: card-out var(--t-slow) var(--ease) both; }
+@keyframes card-in { from { opacity: 0; transform: translateX(24px); } }
+@keyframes card-out { to { opacity: 0; transform: translateX(24px); } }
+/* 几条一起到点：后面叠两层薄边。叠出去的不超过右下那 12 */
+.card.stack { box-shadow: var(--sh-3), 6px 6px 0 -2px color-mix(in srgb, var(--surf) 85%, var(--bg)), 6px 6px 0 -1px var(--line), 11px 11px 0 -4px color-mix(in srgb, var(--surf) 70%, var(--bg)), 11px 11px 0 -3px var(--line); }
+.card .hd { display: flex; gap: 10px; align-items: flex-start; }
+.card .hd .cat { width: 52px; height: 46px; margin: -6px -2px 0 -4px; }
+/* 关掉团子猫时左上角换成铃铛 */
+.card .hd .bellic { display: none; width: 34px; height: 34px; border-radius: var(--r-md); place-items: center; flex: none; background: var(--accent-soft); color: var(--accent-ink); }
+.card .hd .bellic.late { background: var(--danger-soft); color: var(--danger); }
+:root[data-mascot="off"] .card .hd .bellic { display: grid; }
+.card .hd .m { flex: 1; min-width: 0; }
+.when { font-size: calc(12px * var(--fs)); font-weight: 700; color: var(--accent-ink); display: flex; gap: 6px; align-items: center; flex-wrap: wrap; padding-right: 22px; font-variant-numeric: tabular-nums; }
+.when.late { color: var(--danger); }
+.when small { font-weight: 400; color: var(--ink-3); font-size: calc(11.5px * var(--fs)); }
+.title { font-size: calc(16px * var(--fs)); font-weight: 700; line-height: 1.35; margin-top: 1px; overflow-wrap: anywhere; }
+.detail { font-size: calc(12.5px * var(--fs)); color: var(--ink-2); overflow-wrap: anywhere; white-space: pre-line; }
+.more { font-size: calc(11.5px * var(--fs)); color: var(--ink-3); white-space: nowrap; margin-right: 24px; }
+.meta { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
+.meta .plain { font-size: calc(11px * var(--fs)); color: var(--ink-3); display: inline-flex; align-items: center; gap: 3px; min-width: 0; }
+.meta .plain .lucide { width: 12px; height: 12px; }
+.meta .sp { flex: 1; }
+.meta.next { flex-wrap: nowrap; margin-top: 2px; }
+.meta.next .plain { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.acts { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 2px; }
+/* 「完成这次」时四个按钮也放得下一行 */
+.card .acts .btn { padding: 0 9px; }
+.card .acts .btn.ghost { padding: 0 6px; }
+/* 关联的笔记：点一下打开 */
+.link { display: flex; align-items: center; gap: 8px; padding: 7px 10px; border: 0; border-radius: var(--r-md); background: var(--surf-2); font-size: calc(12.5px * var(--fs)); text-align: left; width: 100%; }
+.link:hover { background: var(--hover); }
+.link .lucide { width: 15px; height: 15px; color: var(--tc-amber); }
+.link span { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.link small { color: var(--ink-3); font-size: calc(11.5px * var(--fs)); }
+/* 推迟到… */
+.pick { display: grid; gap: 8px; }
+.pick .lab { font-size: calc(11.5px * var(--fs)); color: var(--ink-3); }
+.chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.chip { height: 28px; padding: 0 10px; border-radius: var(--r-pill); border: 1px solid var(--line-2); background: var(--surf); font-size: calc(12px * var(--fs)); display: inline-flex; align-items: center; transition: background var(--t-fast) var(--ease); }
+.chip:hover { background: var(--hover); }
+.pk { display: flex; width: 100%; font-size: calc(13px * var(--fs)); }
+.pk .pv { margin-left: auto; font-size: calc(11.5px * var(--fs)); color: var(--accent-ink); font-weight: 500; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.pk .pv.bad { color: var(--ink-3); font-weight: 400; }
+/* 小列表：专注时攒的、开场白、收尾 */
+.mini { display: grid; grid-template-columns: minmax(0, 1fr); gap: 2px; }
+.mini .it { display: flex; align-items: center; gap: 8px; padding: 6px 4px; border-top: 1px solid var(--line); font-size: calc(13px * var(--fs)); min-height: 38px; }
+.mini .it:first-child { border-top: 0; }
+.mini .it .t { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.mini .it .tm { font-size: calc(12px * var(--fs)); color: var(--ink-2); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.mini .it .tm.late { color: var(--danger); }
+.mini .it.rest .t { color: var(--ink-3); font-size: calc(12.5px * var(--fs)); }
+.mini.scroll { max-height: 236px; overflow-y: auto; }
+/* 别的电脑处理了：变淡、写一句，2 秒后滑走 */
+.card.gone > * { opacity: .55; }
+.card.gone > .gonenote { opacity: 1; }
+.gonenote { display: flex; gap: 8px; align-items: center; font-size: calc(12.5px * var(--fs)); color: var(--ink-2); }
+.gonenote .lucide { width: 16px; height: 16px; color: var(--ok); }
+
+/* ================= 开场白 / 收尾 ================= */
+.big { width: 420px; background: var(--surf); border-radius: var(--r-lg); box-shadow: var(--sh-3); overflow: hidden; position: relative; animation: big-in var(--t-slow) var(--ease) both; }
+@keyframes big-in { from { opacity: 0; transform: translateY(var(--enter-y)); } }
+.big .sky { position: relative; padding: 16px 40px 14px 108px; min-height: 96px; }
+/* 晨光橘、暮色紫：--sky / --dusk 斜着渐变到卡片底色；上面再盖一层往下淡出，和下面接得上 */
+.big .sky { --tint: var(--sky); background: linear-gradient(to bottom, transparent 45%, var(--surf)), linear-gradient(160deg, var(--tint), color-mix(in srgb, var(--tint) 40%, var(--surf)) 60%, var(--surf)); }
+.big.wrap .sky { --tint: var(--dusk); }
+.big .sky .cat { position: absolute; left: 10px; top: 4px; width: 96px; height: 88px; }
+:root[data-mascot="off"] .big .sky { padding-left: 18px; min-height: 0; }
+.big .sky .date { font-size: calc(12px * var(--fs)); color: var(--ink-2); }
+.big .sky h4 { margin: 2px 0; font-size: calc(22px * var(--fs)); font-weight: 700; letter-spacing: -.01em; line-height: 1.35; }
+.big .sky p { margin: 0; font-size: calc(13px * var(--fs)); color: var(--ink-2); line-height: 1.65; overflow-wrap: anywhere; transition: opacity var(--t-mid) var(--ease); }
+.big .sky p b { color: var(--ink); }
+.big .sky p.fade { opacity: .35; }
+.big .sky .ai { font-size: calc(11.5px * var(--fs)); color: var(--ink-3); margin-top: 6px; display: flex; gap: 6px; align-items: center; }
+.big .sky .ai .spin { width: 12px; height: 12px; }
+.big .body { padding: 6px 16px 4px; display: grid; grid-template-columns: minmax(0, 1fr); gap: 10px; }
+.grp h5 { margin: 0 0 2px; font-size: calc(12px * var(--fs)); font-weight: 700; color: var(--ink-2); display: flex; align-items: center; gap: 6px; }
+.grp h5 .n { font-weight: 400; color: var(--ink-3); }
+.grp h5 .lucide { width: 14px; height: 14px; }
+.grp .it .acts2 { display: flex; gap: 4px; }
+.top1 { background: var(--accent-soft); border-radius: var(--r-md); }
+.mini .it.top1 { border-top-color: transparent; padding-left: 6px; padding-right: 6px; }
+.mini .it.top1 + .it { border-top-color: transparent; }
+.top1 .t b { font-size: calc(10.5px * var(--fs)); color: var(--accent-ink); font-weight: 700; margin-right: 4px; }
+.mini .it .look { color: var(--accent-ink); }
+.donechips { display: flex; flex-wrap: wrap; gap: 6px; }
+.donechips span { font-size: calc(12px * var(--fs)); padding: 2px 9px; border-radius: var(--r-pill); background: var(--ok-soft); color: color-mix(in srgb, var(--ok) 80%, var(--ink)); text-decoration: line-through; text-decoration-color: color-mix(in srgb, var(--ok) 50%, transparent); max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.donechips span.rest { text-decoration: none; background: var(--surf-2); color: var(--ink-3); }
+.big .foot { display: flex; gap: 8px; justify-content: flex-end; align-items: center; padding: 10px 16px 14px; }
+.big .foot .sp { flex: 1; min-width: 0; font-size: calc(11.5px * var(--fs)); color: var(--ink-3); }
+.big .msg { padding: 0 16px; }

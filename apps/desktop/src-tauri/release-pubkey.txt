@@ -1,0 +1,3 @@
+# 叮咪检查更新时用这把公钥核对安装包的签名（minisign 格式），2026-11-06 用 npm run release -- keygen 生成。
+# 私钥在开发电脑的 %USERPROFILE%\.dingmi-release\updater.key，不进仓库。换了这把公钥，已经装好的叮咪就认不出新的安装包了。
+RWRndhQKDFQe78lok5Ckp7fyMh6+QoKGlvPZsekT64VE0JdzfwL93wGa
