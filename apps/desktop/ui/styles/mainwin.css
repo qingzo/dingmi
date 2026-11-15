@@ -282,8 +282,9 @@ button.tag { border: 0; cursor: pointer; }
 .dialog .keys { margin: 0; padding-left: 18px; color: var(--ink-2); font-size: calc(12.5px * var(--fs)); line-height: 1.8; }
 #dlg .dialog:has(.keys) { max-width: 520px; }
 
-/* 待办：按笔记分组，方形的勾（属于笔记），和提醒的圆形完成勾分开 */
-#nb-todos > .grp { padding: 0; }
+/* 提醒页「待办」里笔记的待办：按笔记分组，方形的勾（属于笔记），和提醒的圆形完成勾分开 */
+.grp .more { display: block; margin: 4px 0 0 34px; padding: 4px 0; border: 0; background: none; color: var(--ink-3); font-size: calc(12.5px * var(--fs)); }
+.grp .more:hover { color: var(--accent-ink); }
 .grp h5 .lnk { color: var(--ink-3); font-size: calc(12px * var(--fs)); font-weight: 500; gap: 6px; }
 .grp h5 .lnk:hover { color: var(--accent-ink); }
 .it.todo { cursor: default; }

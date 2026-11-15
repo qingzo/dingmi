@@ -12,7 +12,7 @@ import { icon, type IconName } from "@shared/icons";
 import { editPins, initPins, setPinsConfig } from "../lib/pins";
 import { guess, quickSaveItems } from "../lib/quick";
 import { T } from "../text/widget";
-import { $, addDays, ago, dayStr, esc, fireAt, friendlyDT, isRecurring, noteCatDef, parseDT, setNoteCats, setTags, tagColor, timeOf, weekdayCn } from "@shared/util";
+import { $, addDays, ago, dayStr, esc, fireAt, friendlyDT, isLate, isRecurring, isUndated, noteCatDef, parseDT, setNoteCats, setTags, tagColor, timeOf, weekdayCn } from "@shared/util";
 
 const win = getCurrentWindow();
 /** 「今天」最多几行，「待看」最多几条 */
@@ -97,7 +97,7 @@ function renderHead(pending: number, doneN: number) {
 function renderNext() {
   const now = new Date();
   const next = S.reminders
-    .filter((r) => !r.done && (parseDT(fireAt(r)) ?? now) > now)
+    .filter((r) => !r.done && !r.allday && !isUndated(r) && (parseDT(fireAt(r)) ?? now) > now)
     .sort((a, b) => fireAt(a).localeCompare(fireAt(b)))[0];
   const box = $("#next");
   box.hidden = !next || hiddenPart("next");
@@ -115,10 +115,11 @@ function pastDay(f: string) {
 
 function remRow(r: Reminder, done: boolean) {
   const f = fireAt(r);
-  const late = !done && (parseDT(f) ?? new Date()) < new Date();
+  const late = !done && isLate(r);
   // 周期提醒做完后已经排到下一次了，没法在这里取消
   const fixed = done && isRecurring(r.repeat);
-  const time = done ? timeOf(r.completed_at ?? r.last_done_at ?? f) : pastDay(f) || timeOf(f);
+  // 只有日期的：今天的写「全天」
+  const time = done ? timeOf(r.completed_at ?? r.last_done_at ?? f) : pastDay(f) || (r.allday ? T.allDay : timeOf(f));
   return `<div class="it${done ? " done" : ""}${fixed ? " fixed" : ""}" data-rid="${r.id}">
     <button class="task" data-chk="${r.id}" aria-label="${done ? T.undo : T.done}">${icon("check")}</button>
     <span class="t">${esc(r.title)}</span><span class="tm num${late ? " late" : ""}">${time}</span></div>`;

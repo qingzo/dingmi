@@ -1,7 +1,7 @@
 // 快捷框找程序：拼音、首字母对上时标出哪几个字
 import { describe, expect, it } from "vitest";
 import type { LaunchItem } from "./api";
-import { EMPTY_STATS, markHit, score } from "./launch";
+import { EMPTY_STATS, emptyRows, markHit, score } from "./launch";
 
 const app = (name: string, pys: string[][]) => ({ name, pys });
 const wx = app("微信", [["wei"], ["xin"]]);
@@ -39,4 +39,28 @@ describe("score", () => {
   });
   it("从后一个词开始", () => expect(score("desk", td, [], EMPTY_STATS)?.score).toBe(68));
   it("对不上", () => expect(score("tx", td, [], EMPTY_STATS)).toBeNull());
+});
+
+describe("emptyRows", () => {
+  const its = ["甲", "乙", "丙", "丁", "戊"].map((n) => item(n, [[n]]));
+  const id = (n: string) => `app:${n}`;
+  const cfg = (pins: string[]) => ({ pins: pins.map(id), aliases: [], custom: [], hidden: [], off: [] });
+  const stats = { ...EMPTY_STATS, last: { [id("丙")]: 3, [id("甲")]: 2, [id("乙")]: 1 } };
+  const names = (l: LaunchItem[]) => l.map((i) => i.name);
+  it("常用全放、照放的顺序；最近用过的不重复常用里的", () => {
+    const r = emptyRows(its, cfg(["乙", "丙"]), stats, 2);
+    expect(names(r.pins)).toEqual(["乙", "丙"]);
+    expect(names(r.recent)).toEqual(["甲", "丁"]);
+  });
+  it("没放常用：最近用过的在前，不够的补满", () => {
+    const r = emptyRows(its, cfg([]), stats, 4);
+    expect(r.pins).toEqual([]);
+    expect(names(r.recent)).toEqual(["丙", "甲", "乙", "丁"]);
+  });
+  it("常用里找不到的、找不到文件的不放", () => {
+    const gone = { ...item("己", [["ji"]]), missing: true };
+    const r = emptyRows([...its, gone], cfg(["己", "没有", "甲"]), stats, 1);
+    expect(names(r.pins)).toEqual(["甲"]);
+    expect(names(r.recent)).toEqual(["丙"]);
+  });
 });

@@ -55,4 +55,6 @@ export interface Reminder {
   todo: string | null;
   /** 一句话说得含糊、时间是先定的（"改天""过几天"）；改过时间后变回 false */
   vague: boolean;
+  /** 只说了哪天、没说几点：那天出现在「今天」里，不弹窗（due_at 照旧是那天 09:00）。旧版传来的没有 */
+  allday?: boolean;
 }

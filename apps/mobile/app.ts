@@ -10,11 +10,11 @@ import { captureDrafts, tableClick, tableInput, tableKey, tableStates, type Tabl
 import { STYLES, TEXT, type StyleId } from "@shared/text";
 import { ago, copyText, esc, noteCatChips, noteCatDef, noteCatList, repeatLabel, setNoteCats, setTags, tagChips, tagColor, tagHtml, weekdayCn } from "@shared/util";
 import { readRepeatExtras, REPEAT_KINDS, repeatExtrasHtml, showRepeatExtras } from "@shared/repeat-edit";
-import { parseLocal } from "../desktop/ui/lib/parse";
+import { hasTime, parseLocal } from "../desktop/ui/lib/parse";
 import { fileAad, fromB64, open, seal, sealInbox, unlockBox1 } from "./crypto";
 import { hitToReminder, hitWhen, reminderHits, type ParsedReminder } from "./hit";
 import {
-  blankReminder, cleanFileName, complete, dayStr, DEFAULT_NOTE_CATS, DEFAULT_TAGS, extFor, fireAt, fmtMin, isRecurring, MAX_ATTACHMENT, normalize, overLimit, noteTitle, nowSec, parseDT, toggleTodoLine,
+  blankReminder, cleanFileName, complete, dayStr, DEFAULT_NOTE_CATS, DEFAULT_TAGS, extFor, fireAt, fmtMin, isRecurring, isUndated, NO_DATE, MAX_ATTACHMENT, normalize, overLimit, noteTitle, nowSec, parseDT, toggleTodoLine,
   undoComplete, uuidv7, type Limits, type Payload, type Repeat, type SAttachment, type SNote, type SShared, type SReminder, type TagDef,
 } from "./model";
 import { getStyle, isDark, mascotOn, onLookChange, setStyle } from "./look";
@@ -109,7 +109,7 @@ const monthDay = (d: Date) => `${d.getFullYear() !== new Date().getFullYear() ? 
 
 function whenText(s: string | null | undefined): string {
   const d = parseDT(s);
-  if (!d) return "";
+  if (!d || isUndated({ due_at: s! })) return "";
   const hm = s!.slice(11, 16);
   const n = dayDiff(d);
   if (n === 0) return hm;
@@ -126,12 +126,14 @@ function whenPreview(due: string, rep: Repeat): string {
   return `${d.getMonth() + 1}/${d.getDate()} ${due.slice(11, 16)}${isRecurring(rep) ? ` · ${repeatLabel(rep as RepeatArg, due)}` : ""}`;
 }
 
-/** 用本地规则理解「什么时候」那一句（手机上不用 AI） */
-function parseWhen(s: string): { due: string; repeat: Repeat } | null {
-  const it = parseLocal(s).find((x) => x.type === "reminder");
-  if (!it || it.type !== "reminder") return null;
+/** 用本地规则理解「什么时候」那一句（手机上不用 AI）；只说了哪天的 allday */
+function parseWhen(s: string): { due: string; allday: boolean; repeat: Repeat } | null {
+  const it = parseLocal(s).find(hasTime);
+  if (!it) return null;
   const r = it.repeat;
-  return { due: it.due, repeat: { kind: r.kind, days: [...r.days], monthday: r.monthday, every: r.every, month: r.month ?? 0, nth: r.nth ?? 0 } };
+  // 「明天提醒我」这类本地规则当成 9 点弹的，在这一栏里也算只有日期：没写钟点就不填时间
+  const allday = it.allday || (!isRecurring(r) && !it.guess && !/\d\s*[:：点时]|[点时]\s*$|早|晚|上午|中午|下午|凌晨|傍晚|夜|分钟|小时|钟头|一会|待会|等会/.test(s));
+  return { due: it.due, allday, repeat: { kind: r.kind, days: [...r.days], monthday: r.monthday, every: r.every, month: r.month ?? 0, nth: r.nth ?? 0 } };
 }
 
 // ---------- 小工具 ----------
@@ -298,9 +300,10 @@ function todayData() {
   const tm = dayStr(new Date(Date.now() + 86400000));
   const all = reminders();
   return {
-    pending: all.filter((r) => !r.done && fireAt(r).slice(0, 10) <= tk).sort(byFire),
+    pending: all.filter((r) => !r.done && fireAt(r).slice(0, 10) <= tk).sort((a, b) => Number(!a.allday) - Number(!b.allday) || byFire(a, b)),
     doneToday: all.filter((r) => (r.done && r.completed_at?.startsWith(tk)) || (isRecurring(r.repeat) && r.last_done_at?.startsWith(tk))),
     tomorrow: all.filter((r) => !r.done && fireAt(r).slice(0, 10) === tm).sort(byFire),
+    undated: all.filter((r) => !r.done && isUndated(r)).sort((a, b) => a.created_at.localeCompare(b.created_at)),
   };
 }
 
@@ -378,9 +381,16 @@ const banner = (b: string, text: string, extra = "") => `<div class="banner err"
 /** 一条提醒。short：分组已经写了哪天，时间只写钟点 */
 function remRow(r: SReminder, o: { done?: boolean; short?: boolean } = {}) {
   const f = fireAt(r);
-  const late = !o.done && (parseDT(f) ?? new Date()) < new Date();
+  // 待办不会过点；只有日期的那天过完才算
+  const late = !o.done && !isUndated(r) && (r.allday ? f.slice(0, 10) < dayStr(new Date()) : (parseDT(f) ?? new Date()) < new Date());
   const rec = isRecurring(r.repeat);
-  const time = o.done ? T.doneAt(whenText(r.completed_at ?? r.last_done_at ?? f)) : o.short ? f.slice(11, 16) : whenText(f);
+  const day = () => {
+    const n = dayDiff(parseDT(f) ?? new Date());
+    return n === 0 ? T.allDay : whenText(f).replace(/\s*\d{2}:\d{2}$/, "");
+  };
+  const time = o.done
+    ? isUndated(r) ? T.doneAt("").trim() : T.doneAt(whenText(r.completed_at ?? r.last_done_at ?? f))
+    : isUndated(r) ? "" : r.allday ? day() : o.short ? f.slice(11, 16) : whenText(f);
   const sub = [r.detail, !o.done && r.snooze_count ? T.snoozed(r.snooze_count) : ""].filter(Boolean).join(" · ");
   const tags = [
     r.urgent ? `<span class="tag" style="--c:var(--danger)">${T.urgent}</span>` : "",
@@ -399,22 +409,24 @@ const group = (title: string, rows: string) => (rows ? `<div class="grp">${esc(t
 
 function viewToday() {
   const now = new Date();
-  const { pending, doneToday, tomorrow } = todayData();
+  const { pending, doneToday, tomorrow, undated } = todayData();
   const list = pending.map((r) => remRow(r, { short: dayDiff(parseDT(fireAt(r)) ?? now) === 0 })).join("") + doneToday.map((r) => remRow(r, { done: true })).join("");
   const date = `${now.getMonth() + 1} 月 ${now.getDate()} 日 ${weekdayCn(now)}`;
   return `${top(T.today, T.todaySub(date, pending.length), syncBtn())}
     <main class="pb">${banners()}${sendBox()}${queueBar()}
     ${list ? group(T.grpToday, list) : `<div class="grp">${T.grpToday}</div>${empty("sleep", TEXT.todayEmpty(mascotOn()))}`}
-    ${group(T.grpTomorrow, tomorrow.map((r) => remRow(r, { short: true })).join(""))}</main>`;
+    ${group(T.grpTomorrow, tomorrow.map((r) => remRow(r, { short: true })).join(""))}
+    ${group(T.rfUndated, undated.map((r) => remRow(r)).join(""))}</main>`;
 }
 
 function viewReminders() {
   const active = reminders().filter((r) => !r.done);
   const doneList = reminders().filter((r) => r.done);
   const match = (r: SReminder, t: string) => r.tag === t || (t === "cycle" && isRecurring(r.repeat));
-  if (!["todo", "cycle", "done"].includes(S.rFilter) && !currentTags().some((t) => t.id === S.rFilter)) S.rFilter = "todo";
+  if (!["todo", "undated", "cycle", "done"].includes(S.rFilter) && !currentTags().some((t) => t.id === S.rFilter)) S.rFilter = "todo";
   const chips: [string, string, string][] = [
     ["todo", T.rfTodo, ""],
+    ["undated", T.rfUndated, ""],
     ["cycle", T.rfCycle, ""],
     ["done", T.rfDone, ""],
     ...tagsInUse(active).map((t) => [t.id, t.name, tagColor(t.color)] as [string, string, string]),
@@ -423,11 +435,15 @@ function viewReminders() {
   if (S.rFilter === "done") {
     const list = doneList.sort((a, b) => (b.completed_at ?? "").localeCompare(a.completed_at ?? "")).slice(0, 200);
     body = list.length ? `<div class="card">${list.map((r) => remRow(r, { done: true })).join("")}</div>` : empty("normal", T.doneEmpty);
+  } else if (S.rFilter === "undated") {
+    const list = active.filter(isUndated).sort((a, b) => a.created_at.localeCompare(b.created_at));
+    body = list.length ? `<div class="card">${list.map((r) => remRow(r)).join("")}</div>` : "";
   } else if (S.rFilter === "cycle") {
     const list = active.filter((r) => isRecurring(r.repeat)).sort(byFire);
     body = group(T.grpCycle, list.map((r) => remRow(r)).join(""));
   } else {
-    const list = (S.rFilter === "todo" ? active : active.filter((r) => match(r, S.rFilter))).sort(byFire);
+    const inTag = S.rFilter === "todo" ? active : active.filter((r) => match(r, S.rFilter));
+    const list = inTag.filter((r) => !isUndated(r)).sort(byFire);
     // 过点了 / 今天 / 明天 / 这周（到周日）/ 以后
     const now = new Date();
     const toSunday = 7 - (now.getDay() || 7);
@@ -441,9 +457,12 @@ function viewReminders() {
     for (const r of list) {
       const d = parseDT(fireAt(r)) ?? now;
       const n = dayDiff(d);
-      buckets[d < now ? 0 : n === 0 ? 1 : n === 1 ? 2 : n <= toSunday ? 3 : 4][1].push(r);
+      const late = r.allday ? n < 0 : d < now;
+      buckets[late ? 0 : n === 0 ? 1 : n === 1 ? 2 : n <= toSunday ? 3 : 4][1].push(r);
     }
     body = buckets.map(([t, rs, short]) => group(t, rs.map((r) => remRow(r, { short })).join(""))).join("");
+    // 按分类看时，这个分类里的待办放最后（「还没做的」不放，待办有自己那一栏）
+    if (S.rFilter !== "todo") body += group(T.rfUndated, inTag.filter(isUndated).map((r) => remRow(r)).join(""));
   }
   if (!body) body = empty("normal", T.remEmpty, T.remEmptySub);
   return `${top(T.reminders, "", ibtn("plus", T.newReminder, 'data-act="new-rem"'))}
@@ -682,14 +701,16 @@ function readRepeat(s: HTMLElement): Repeat | null {
 
 function openReminder(r: SReminder, isNew = false) {
   const due = r.due_at;
-  const d0 = parseDT(due) ?? new Date();
+  // 待办：日期、时间都空着；只有日期的：时间空着
+  const undated = isUndated(r);
+  const d0 = (undated ? null : parseDT(due)) ?? new Date();
   const s = sheet(`<h4>${isNew ? T.newReminder : T.editReminder}</h4>
     <form class="ed" id="ed" autocomplete="off">
       <label class="fld">${T.what}<input class="field" id="ed-title" value="${esc(r.title)}" placeholder="${T.whatPh}" enterkeyhint="next"></label>
-      <label class="fld">${T.when}<span class="field when"><input id="ed-when" placeholder="${T.whenPh}" enterkeyhint="done"><span class="pv" id="ed-pv">${esc(whenPreview(due, r.repeat))}</span></span></label>
+      <label class="fld">${T.when}<span class="field when"><input id="ed-when" placeholder="${T.whenPh}" enterkeyhint="done"><span class="pv" id="ed-pv">${esc(undated ? T.rfUndated : r.allday ? whenText(due).replace(/\s*\d{2}:\d{2}$/, "") || T.today : whenPreview(due, r.repeat))}</span></span></label>
       <div class="f2">
-        <label class="fld"><span id="ed-date-l">${(r.repeat.kind || "none") === "none" ? T.date : T.startDate}</span><input class="field" type="date" id="ed-date" value="${due.slice(0, 10)}"></label>
-        <label class="fld">${T.time}<input class="field" type="time" id="ed-time" value="${due.slice(11, 16)}"></label>
+        <label class="fld"><span id="ed-date-l">${(r.repeat.kind || "none") === "none" ? T.date : T.startDate}</span><input class="field" type="date" id="ed-date" value="${undated ? "" : due.slice(0, 10)}"></label>
+        <label class="fld">${T.time}<input class="field" type="time" id="ed-time" value="${undated || r.allday ? "" : due.slice(11, 16)}"></label>
       </div>
       <div class="fld"><span>${T.repeat}</span><div class="rep" id="ed-rep">${repeatBlock(r.repeat, d0)}</div></div>
       ${currentTags().length ? `<div class="fld"><span>${T.category}</span><div class="chips wrap" id="ed-tags">${tagChips(r.tag)}</div></div>` : ""}
@@ -705,7 +726,7 @@ function openReminder(r: SReminder, isNew = false) {
   const syncPreview = () => {
     const rep = readRepeat(s);
     pv.classList.remove("miss");
-    pv.textContent = rep && dateIn.value && timeIn.value ? whenPreview(`${dateIn.value} ${timeIn.value}`, rep) : "";
+    pv.textContent = !dateIn.value && !timeIn.value ? T.rfUndated : rep && dateIn.value && timeIn.value ? whenPreview(`${dateIn.value} ${timeIn.value}`, rep) : rep && dateIn.value ? whenText(`${dateIn.value} 09:00`).replace(/\s*\d{2}:\d{2}$/, "") || T.today : "";
   };
   const kindChanged = () => {
     const k = $<HTMLSelectElement>("#ed-kind", s).value;
@@ -731,7 +752,7 @@ function openReminder(r: SReminder, isNew = false) {
         return;
       }
       dateIn.value = got.due.slice(0, 10);
-      timeIn.value = got.due.slice(11, 16);
+      timeIn.value = got.allday ? "" : got.due.slice(11, 16);
       $("#ed-rep", s).innerHTML = repeatBlock(got.repeat, parseDT(got.due) ?? new Date());
       kindChanged();
       syncPreview();
@@ -773,13 +794,17 @@ function openReminder(r: SReminder, isNew = false) {
     const err = $("#ed-err", s);
     const title = $<HTMLInputElement>("#ed-title", s).value.trim();
     if (!title) return void (err.textContent = T.noTitle);
-    if (!dateIn.value || !timeIn.value) return void (err.textContent = T.noTime);
+    if (!dateIn.value && timeIn.value) return void (err.textContent = T.noTime);
     const repeat = readRepeat(s);
     if (!repeat) return void (err.textContent = T.noDay);
+    // 日期、时间都空着：待办；只选了日期：只有日期的（周期的照常 9 点提醒）
+    const todo = !dateIn.value;
+    if (todo && isRecurring(repeat)) return void (err.textContent = T.noTimeRepeat);
+    const allday = !todo && !timeIn.value && !isRecurring(repeat);
     const now = new Date();
-    const due = normalize(repeat, parseDT(`${dateIn.value} ${timeIn.value}`)!, now);
+    const due = todo ? parseDT(NO_DATE)! : normalize(repeat, parseDT(`${dateIn.value} ${timeIn.value || "09:00"}`)!, now);
     // 和电脑端一样：改了时间就重新等着提醒；一次性的已经完成、时间也没挪到以后的，保持完成
-    const keepDone = !isRecurring(repeat) && r.done && due <= now;
+    const keepDone = !isRecurring(repeat) && r.done && (todo || due <= now);
     const tagEl = $$("#ed-tags [data-tag]", s).find((c) => c.getAttribute("aria-pressed") === "true");
     await saveR({
       ...r,
@@ -794,9 +819,10 @@ function openReminder(r: SReminder, isNew = false) {
       urgent: $("#ed-urgent", s).getAttribute("aria-checked") === "true",
       // 改过时间就不算含糊了
       vague: !!r.vague && fmtMin(due) === r.due_at,
+      allday,
     });
     popLayer();
-    toast(T.saved(whenFull(fmtMin(due))));
+    toast(todo ? T.savedTodo : allday ? T.savedDay(whenText(fmtMin(due)).replace(/\s*\d{2}:\d{2}$/, "") || T.today) : T.saved(whenFull(fmtMin(due))));
   };
   if (isNew) setTimeout(() => $<HTMLInputElement>("#ed-title", s).focus(), 300);
 }

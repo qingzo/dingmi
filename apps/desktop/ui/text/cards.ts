@@ -56,6 +56,8 @@ export const morningText = {
   aiWriting: "AI 正在写今天的开场白…",
   today: "今天",
   top: "最要紧",
+  /** 只说了哪天、没说几点的 */
+  allDay: "全天",
   restMore: (n: number) => `还有 ${n} 件…`,
   late: "之前没做完",
   moveToday: "挪到今天",

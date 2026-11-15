@@ -8,12 +8,12 @@ export function dayDiff(d: Date, now = new Date()) {
   return Math.round((a - b) / 86400000);
 }
 
-/** 今天 14:00 / 明天 09:30 / 11月6日 14:00 / 2027年1月3日 08:00 */
-export function whenText(due: string, now = new Date()) {
+/** 今天 14:00 / 明天 09:30 / 11月6日 14:00 / 2027年1月3日 08:00；只有日期的不写钟点，待办是空的 */
+export function whenText(due: string, now = new Date(), allday = false) {
   const d = parseDT(due);
-  if (!d) return "";
+  if (!d || due.startsWith("9999-")) return "";
   const n = dayDiff(d, now);
   const year = d.getFullYear() !== now.getFullYear() ? `${d.getFullYear()}年` : "";
   const day = n === 0 ? "今天" : n === 1 ? "明天" : `${year}${d.getMonth() + 1}月${d.getDate()}日`;
-  return `${day} ${timeOf(due)}`;
+  return allday ? day : `${day} ${timeOf(due)}`;
 }

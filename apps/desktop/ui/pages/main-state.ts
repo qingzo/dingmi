@@ -43,13 +43,11 @@ export const S = {
   focus: { manual: false, auto: false, active: false, held: 0 } as FocusInfo,
   view: "today" as View,
   /** 提醒页上面切的：还没做的 / 周期 / 做完的 */
-  rMode: "todo" as "todo" | "cycle" | "done",
+  rMode: "todo" as "todo" | "undated" | "cycle" | "done",
   /** 侧栏点了哪个提醒分类（只看这一类），null 是全部 */
   rTag: null as Tag | null,
   q: "",
   noteId: 0,
-  /** 笔记本里看「待办」（所有笔记里没勾掉的待办） */
-  todoView: false,
   /** 设置里正在看哪一页（text/settings.ts 的 PAGES）；打开时停在上次看的那页 */
   setSec: "general",
   /** 设置画好后跳到哪一行、闪一下（data-row），跳过去就清掉 */

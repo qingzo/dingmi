@@ -435,6 +435,14 @@ fn save_reminder(app: AppHandle, window: WebviewWindow, st: tauri::State<AppStat
     if r.title.is_empty() {
         return Err("先写上要提醒什么".into());
     }
+    // 待办（没定时间）不重复、不分只有日期；周期提醒都要到点弹（需求-1.x 第 40 节）
+    if db::is_undated(&r.due_at) {
+        r.due_at = db::NO_DATE.into();
+        r.repeat = Default::default();
+        r.allday = false;
+    } else if r.repeat.is_recurring() {
+        r.allday = false;
+    }
     let due = db::parse_dt(&r.due_at).ok_or("时间格式不对")?;
     let now = Local::now().naive_local();
     r.due_at = recur::normalize(&r.repeat, due, now)
@@ -443,9 +451,10 @@ fn save_reminder(app: AppHandle, window: WebviewWindow, st: tauri::State<AppStat
     r.snoozed_until = None;
     let c = st.db.lock().unwrap();
     let old = if r.id > 0 { db::get_reminder(&c, r.id).map_err(err)? } else { None };
+    // 做完的一次性提醒改了字：时间还在过去（或者是待办）就还算做完
     let keep_done = !r.repeat.is_recurring()
         && old.as_ref().map(|o| o.done).unwrap_or(false)
-        && db::parse_dt(&r.due_at).map(|d| d <= now).unwrap_or(false);
+        && (db::is_undated(&r.due_at) || db::parse_dt(&r.due_at).map(|d| d <= now).unwrap_or(false));
     if let Some(o) = &old {
         r.uid = o.uid.clone();
         r.snooze_count = o.snooze_count;
@@ -511,12 +520,18 @@ fn reminder_action(
     let c = st.db.lock().unwrap();
     let mut r = db::get_reminder(&c, id).map_err(err)?.ok_or("这条提醒已经不在了")?;
     let now = Local::now().naive_local();
+    // 待办没有时间，推迟了反而会到点弹出来
+    if (action.starts_with("snooze") || action == "tomorrow") && db::is_undated(&r.due_at) {
+        return Err("待办还没定时间，改一下定个时间就行".into());
+    }
     match action.as_str() {
         "done" => complete(&mut r),
         "snooze" => {
             r.snoozed_until = Some((now + Duration::minutes(snooze_min)).format(db::FMT).to_string());
             r.state = ST_WAIT;
             r.snooze_count += 1;
+            // 只有日期的推迟到几点：到点要弹出来
+            r.allday = false;
         }
         "tomorrow" => {
             let t = db::parse_dt(r.fire_at()).unwrap_or(now).time();
@@ -533,6 +548,7 @@ fn reminder_action(
             r.snoozed_until = Some(at.format(db::FMT).to_string());
             r.state = ST_WAIT;
             r.snooze_count += 1;
+            r.allday = false;
         }
         "undo" => {
             if !r.repeat.is_recurring() {
@@ -1145,6 +1161,38 @@ async fn save_settings(app: AppHandle, st: tauri::State<'_, AppState>, settings:
     r
 }
 
+/// 写东西时顺手加一个分类（改提醒的抽屉、笔记的分类菜单，需求-1.x 第 41 节）。只碰分类，所以笔记窗口也能用（不给它存整份设置）。
+/// field：tags 提醒分类 / note_cats 笔记分类；同名的已经有了就回那个；和设置页一样最多 12 个、名字 8 个字以内
+#[tauri::command]
+fn add_category(app: AppHandle, st: tauri::State<AppState>, field: String, name: String) -> Res<settings::TagDef> {
+    const COLORS: [&str; 9] = ["blue", "orange", "pink", "purple", "green", "teal", "red", "amber", "gray"];
+    let name: String = name.trim().chars().take(8).collect();
+    if name.is_empty() {
+        return Err("先写上分类的名字".into());
+    }
+    let mut s = st.settings.lock().unwrap().clone();
+    let list = match field.as_str() {
+        "tags" => &mut s.tags,
+        "note_cats" => &mut s.note_cats,
+        _ => return Err("不认识的分类".into()),
+    };
+    if let Some(t) = list.iter().find(|t| t.name == name) {
+        return Ok(t.clone());
+    }
+    if list.len() >= 12 {
+        return Err("分类最多 12 个，先在「设置 → 分类」里删掉一个".into());
+    }
+    let color = COLORS.iter().find(|c| !list.iter().any(|t| t.color == **c)).unwrap_or(&"gray");
+    let uid = uuid::Uuid::now_v7().simple().to_string();
+    let t = settings::TagDef { id: format!("t{}", &uid[uid.len() - 10..]), name, color: color.to_string() };
+    list.push(t.clone());
+    settings::save(&st.db.lock().unwrap(), &s).map_err(err)?;
+    *st.settings.lock().unwrap() = s.clone();
+    st.sync.poke();
+    let _ = app.emit("settings-changed", &s);
+    Ok(t)
+}
+
 /// 主窗口里的搜索框（Ctrl + K）：打开快捷框，先放一个 "?"，就是搜索
 #[tauri::command]
 async fn open_flash_search(app: AppHandle, st: tauri::State<'_, AppState>) -> Res<()> {
@@ -1314,6 +1362,7 @@ async fn open_window(app: AppHandle, name: String) -> Res<()> {
 
 /// 从别的窗口跳到主窗口的某个页面（比如开场白里点"看看"某条笔记、快捷框的搜索里打开一条提醒）
 #[tauri::command]
+#[allow(clippy::too_many_arguments)]
 async fn open_main_nav(
     app: AppHandle,
     st: tauri::State<'_, AppState>,
@@ -1322,9 +1371,10 @@ async fn open_main_nav(
     reminder_id: Option<i64>,
     sub: Option<String>,
     row: Option<String>,
+    find: Option<String>,
 ) -> Res<()> {
-    // sub：笔记本按哪个分类筛 / 设置的哪一页；row：设置里跳到那一行（闪一下）
-    let nav = json!({ "view": view, "noteId": note_id, "reminderId": reminder_id, "sub": sub, "row": row });
+    // sub：笔记本按哪个分类筛 / 设置的哪一页；row：设置里跳到那一行（闪一下）；find：打开笔记时标出、滚到这几个字（从搜索点进来的）
+    let nav = json!({ "view": view, "noteId": note_id, "reminderId": reminder_id, "sub": sub, "row": row, "find": find });
     if app.get_webview_window("main").is_some() {
         let _ = app.emit_to("main", "nav", nav);
     } else {
@@ -1881,6 +1931,7 @@ pub fn run() {
             list_devices,
             get_settings,
             save_settings,
+            add_category,
             data_path,
             local_backups,
             widget_glass_ok,

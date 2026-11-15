@@ -24,6 +24,7 @@ export const T = {
   inMin: (m: number) => `${m} 分钟后`,
   inHour: (h: number, m: number) => `${h} 小时${m ? ` ${m} 分钟` : ""}后`,
   yesterday: "昨天",
+  allDay: "全天",
 
   today: "今天",
   pins: "常用",

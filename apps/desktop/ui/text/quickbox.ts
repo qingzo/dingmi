@@ -10,6 +10,9 @@ export const T = {
   // 空着时
   alt: (n: number) => `Alt ${n}`,
   next: "下一条：",
+  /** 常用（固定的）和最近用过的都有时，两块上面的小字 */
+  pinsLab: "常用",
+  recentLab: "最近用过",
   soon: "马上",
   inMin: (m: number) => `${m} 分钟后`,
   inHour: (h: number, m: number) => `${h} 小时${m ? ` ${m} 分钟` : ""}后`,
@@ -18,7 +21,10 @@ export const T = {
   rec: (title: string) => `记下来：${title}`,
   reminder: "提醒",
   note: "笔记",
-  noTime: "没有时间，存成一条笔记",
+  noTime: "没有时间，存成一条笔记；开头写「待办」就记成待办",
+  todo: "待办",
+  todoWhen: "有空再做",
+  dayOnly: "那天不弹窗",
   urgent: "紧急",
   count: (n: number) => `一共 ${n} 条`,
   alsoNote: "也记一条笔记",
@@ -75,6 +81,8 @@ export const T = {
   // 记好了：框缩成一行，1.5 秒后自己消失
   savedRem: (mascot: boolean, when: string) => (mascot ? `搞定！${when} 叫你` : `已设好提醒：${when}`),
   savedNote: (mascot: boolean) => (mascot ? "搞定！记进笔记本了" : "已存进笔记本"),
+  savedTodo: (mascot: boolean) => (mascot ? "搞定！放进待办了" : "已放进待办"),
+  savedDay: (mascot: boolean, day: string) => (mascot ? `搞定！${day}那天放在「今天」里` : `已记好：${day}那天放在「今天」里`),
   savedGuess: "时间是先定的，在提醒列表里能改",
   savedAlsoNote: "也记了一条笔记",
   aiFailed: "AI 这次没回话，按本地规则记的",

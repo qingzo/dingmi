@@ -185,7 +185,7 @@ pub fn note_markdown(n: &Note, cat: Option<&str>, reminder: Option<&Reminder>, s
         head.push(format!("category: {}", yaml(c)));
     }
     if let Some(r) = reminder {
-        head.push(format!("reminder: {}", yaml(&format!("{} {}", r.due_at, r.title))));
+        head.push(format!("reminder: {}", yaml(&format!("{} {}", when_text(r), r.title))));
     }
     head.push("---".into());
     format!("{}\n\n{}\n", head.join("\n"), link_attachments(&n.body, subs).trim_end())
@@ -267,10 +267,22 @@ fn reminder_extras(r: &Reminder, tags: &[TagDef], devices: &[Device]) -> String 
     parts.iter().map(|p| format!(" · {p}")).collect()
 }
 
-/// `提醒.md`：还没做的、周期提醒、做完的 三段
+/// 一条提醒的时间：待办写「待办」，只有日期的只写日期
+fn when_text(r: &Reminder) -> String {
+    if db::is_undated(&r.due_at) {
+        "待办".into()
+    } else if r.allday {
+        r.due_at.get(..10).unwrap_or(&r.due_at).into()
+    } else {
+        r.due_at.clone()
+    }
+}
+
+/// `提醒.md`：还没做的、待办、周期提醒、做完的 四段
 pub fn reminders_markdown(rs: &[Reminder], tags: &[TagDef], devices: &[Device]) -> String {
     let live = rs.iter().filter(|r| r.deleted_at.is_none());
-    let mut todo: Vec<&Reminder> = live.clone().filter(|r| !r.repeat.is_recurring() && !r.done).collect();
+    let mut later: Vec<&Reminder> = live.clone().filter(|r| db::is_undated(&r.due_at) && !r.done).collect();
+    let mut todo: Vec<&Reminder> = live.clone().filter(|r| !r.repeat.is_recurring() && !r.done && !db::is_undated(&r.due_at)).collect();
     let mut cycle: Vec<&Reminder> = live.clone().filter(|r| r.repeat.is_recurring()).collect();
     let mut done: Vec<&Reminder> = live.filter(|r| !r.repeat.is_recurring() && r.done).collect();
     todo.sort_by(|a, b| a.due_at.cmp(&b.due_at));
@@ -282,7 +294,16 @@ pub fn reminders_markdown(rs: &[Reminder], tags: &[TagDef], devices: &[Device]) 
         out.extend(none());
     }
     for r in todo {
-        out.push(format!("- [ ] {} {}{}", r.due_at, r.title, reminder_extras(r, tags, devices)));
+        out.push(format!("- [ ] {} {}{}", when_text(r), r.title, reminder_extras(r, tags, devices)));
+        out.extend(r.detail.lines().filter(|l| !l.trim().is_empty()).map(|l| format!("  {}", l.trim_end())));
+    }
+    // 待办：还没定时间的，照记下的先后
+    later.sort_by(|a, b| a.created_at.cmp(&b.created_at));
+    if !later.is_empty() {
+        out.extend([String::new(), "## 待办".into()]);
+    }
+    for r in later {
+        out.push(format!("- [ ] {}{}", r.title, reminder_extras(r, tags, devices)));
         out.extend(r.detail.lines().filter(|l| !l.trim().is_empty()).map(|l| format!("  {}", l.trim_end())));
     }
     out.extend([String::new(), "## 周期提醒".into()]);
@@ -300,7 +321,8 @@ pub fn reminders_markdown(rs: &[Reminder], tags: &[TagDef], devices: &[Device]) 
     }
     for r in done {
         let at = r.completed_at.as_deref().and_then(|c| c.get(5..16)).map(|c| format!("（{c} 做完）")).unwrap_or_default();
-        out.push(format!("- [x] {} {}{}{at}", r.due_at, r.title, reminder_extras(r, tags, devices)));
+        let when = if db::is_undated(&r.due_at) { String::new() } else { format!("{} ", when_text(r)) };
+        out.push(format!("- [x] {when}{}{}{at}", r.title, reminder_extras(r, tags, devices)));
     }
     out.join("\n") + "\n"
 }

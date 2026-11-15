@@ -8,9 +8,10 @@ import { api, errText, newNote, newReminder, type Note, type Reminder, type Sett
 import { lightboxFrom } from "../lib/lightbox";
 import { attView } from "../lib/official";
 import { createNoteEditor, EDIT_KEYS, fillToolbar, type NoteEditor } from "../lib/editor";
-import { parseLocal } from "../lib/parse";
+import { hasTime, parseLocal } from "../lib/parse";
 import { askRemind } from "../lib/remindpop";
 import { askTidy } from "../lib/tidyask";
+import { newCatButton, openCatInput } from "../lib/catnew";
 import { plain, renderMd, setAttachmentDir, setFileInfo, setFileSaveButton, setTodo, shrunkMuch } from "@shared/md";
 
 // 文件卡片旁边放「另存为…」
@@ -150,9 +151,8 @@ function drawMeta() {
   const linked = note.reminder_id ? reminders.find((r) => r.id === note.reminder_id) : undefined;
   const n = plain(ed?.value ?? note.body).replace(/\s/g, "").length;
   $("#meta").innerHTML = [
-    noteCatList().length || cat
-      ? `<button type="button" class="${cat ? "tag" : "tag nocat"}" id="m-cat" style="${cat ? tagColor(cat.color) : ""}" title="${T.catTip}" aria-haspopup="menu">${cat ? esc(cat.name) : `${icon("plus")}${T.noCat}`}</button>`
-      : "",
+    // 没有笔记分类时也放：菜单里能直接加一个
+    `<button type="button" class="${cat ? "tag" : "tag nocat"}" id="m-cat" style="${cat ? tagColor(cat.color) : ""}" title="${T.catTip}" aria-haspopup="menu">${cat ? esc(cat.name) : `${icon("plus")}${T.noCat}`}</button>`,
     `<span>${esc(T.edited(ago(note.updated_at)))}</span>`,
     linked ? `<button type="button" class="lk" id="m-rem" title="${T.linkedTip}">${icon("bell")}${esc(T.linked(`${whenShort(fireAt(linked))} ${linked.title}`))}</button>` : "",
     `<span class="num">${T.words(n)}</span>`,
@@ -160,7 +160,8 @@ function drawMeta() {
 }
 
 /** 小菜单：贴在 anchor 下面，点了某一项或者点别处就关 */
-function popMenu(anchor: HTMLElement, html: string, onPick: (el: HTMLElement) => void) {
+/** onNew：点了菜单里的「＋ 新分类」（菜单不收起，换成输入框） */
+function popMenu(anchor: HTMLElement, html: string, onPick: (el: HTMLElement) => void, onNew?: (el: HTMLElement) => void) {
   document.querySelector(".nmenu")?.remove();
   const m = document.createElement("div");
   m.className = "menu nmenu";
@@ -179,6 +180,7 @@ function popMenu(anchor: HTMLElement, html: string, onPick: (el: HTMLElement) =>
   m.addEventListener("click", (e) => {
     const el = (e.target as HTMLElement).closest<HTMLElement>(".mi");
     if (!el) return;
+    if (el.matches("[data-newcat]")) return onNew?.(el);
     close();
     onPick(el);
   });
@@ -189,17 +191,29 @@ $("#meta").addEventListener("click", (e) => {
   const cat = el.closest<HTMLElement>("#m-cat");
   if (cat) {
     const list = noteCatList();
+    const pick = (id: string | null) => {
+      document.querySelector(".nmenu")?.remove();
+      tag = id;
+      drawMeta();
+      touch();
+    };
     popMenu(
       cat,
-      list.length
-        ? `<button class="mi" data-cat="">${T.catNone}</button>${list.map((c) => `<button class="mi" data-cat="${esc(c.id)}"><span class="tag" style="${tagColor(c.color)}">${esc(c.name)}</span>${c.id === tag ? icon("check") : ""}</button>`).join("")}`
-        : `<div class="mi">${T.catEmpty}</div>`,
+      `<button class="mi" data-cat="">${T.catNone}</button>${list.map((c) => `<button class="mi" data-cat="${esc(c.id)}"><span class="tag" style="${tagColor(c.color)}">${esc(c.name)}</span>${c.id === tag ? icon("check") : ""}</button>`).join("")}${newCatButton("mi")}`,
       (mi) => {
-        if (mi.dataset.cat === undefined) return;
-        tag = mi.dataset.cat || null;
-        drawMeta();
-        touch();
+        if (mi.dataset.cat !== undefined) pick(mi.dataset.cat || null);
       },
+      (nc) =>
+        // 加一个笔记分类，加好就用上
+        openCatInput(
+          nc,
+          "note_cats",
+          (t) => {
+            setNoteCats([...noteCatList().filter((x) => x.id !== t.id), t]);
+            pick(t.id);
+          },
+          (msg) => toast(msg),
+        ),
     );
   }
   if (el.closest("#m-rem") && note.reminder_id) void api.openMainNav("reminders", undefined, note.reminder_id).catch((err) => toast(errText(err)));
@@ -370,7 +384,7 @@ async function todoToggled(text: string, done: boolean) {
 /** 选中的文字设成提醒：走随手记的理解（时间、周期、紧急），关联这条笔记 */
 async function remindText(text: string, anchor: HTMLElement) {
   if (!text) return;
-  const parsed = parseLocal(text).find((i) => i.type === "reminder");
+  const parsed = parseLocal(text).find(hasTime);
   const title = parsed?.type === "reminder" && parsed.title && text.includes(parsed.title) ? parsed.title : text;
   const res = await askRemind({ anchor, title, phrase: parsed ? text : "" });
   if (!res || res === "delete") return;

@@ -68,7 +68,7 @@ export interface Settings {
   mascot: boolean | null;
   /** 动画：on 启用 / system 跟随 Windows / reduce 减少 */
   motion: "on" | "system" | "reduce";
-  /** 快捷框空着时「常用」显示几排（1 或 2；只属于这台电脑） */
+  /** 快捷框空着时「最近用过」显示几排（1–3；常用里放的另外在下面全显示；只属于这台电脑） */
   pin_rows: number;
   /** 空格启动（实验）：快捷框里打了字以后按空格也能打开选中的程序（只属于这台电脑） */
   flash_space: boolean;
@@ -430,6 +430,7 @@ export const newReminder = (p: Partial<Reminder> = {}): Reminder => ({
   note_uid: null,
   todo: null,
   vague: false,
+  allday: false,
   ...p,
 });
 
@@ -511,6 +512,8 @@ export interface Nav {
   sub: string | null;
   /** 设置：跳到哪一行（那一行闪一下），见 pages/settings.ts 的行 id */
   row?: string | null;
+  /** 笔记：从搜索点进来的，正文里标出这几个字、滚到第一处 */
+  find?: string | null;
 }
 
 export const api = {
@@ -648,6 +651,8 @@ export const api = {
   restoreApply: (path: string, replace: boolean) => invoke<Restored>("restore_apply", { path, replace }),
   getSettings: () => invoke<Settings>("get_settings"),
   saveSettings: (settings: Settings) => invoke<void>("save_settings", { settings }),
+  /** 写东西时顺手加一个分类（同名的已经有了就回那个） */
+  addCategory: (field: "tags" | "note_cats", name: string) => invoke<TagDef>("add_category", { field, name }),
   dataPath: () => invoke<string>("data_path"),
   /** 本机每天的自动备份放在哪、最近一次的时间 */
   localBackups: () => invoke<{ dir: string; last: string | null }>("local_backups"),
@@ -666,8 +671,8 @@ export const api = {
   aiTidyNote: (title: string, body: string, ask = "") => invoke<{ title: string; body: string }>("ai_tidy_note", { title, body, ask }),
   openWindow: (name: "main" | "flash" | "qnote" | "morning" | "wrap") => invoke<void>("open_window", { name }),
   /** 到主窗口的某一页；设置时 sub 是哪一页、row 是那一行（比如 "general", "hk_flash"） */
-  openMainNav: (view: string, noteId?: number, reminderId?: number, sub?: string, row?: string) =>
-    invoke<void>("open_main_nav", { view, noteId: noteId ?? null, reminderId: reminderId ?? null, sub: sub ?? null, row: row ?? null }),
+  openMainNav: (view: string, noteId?: number, reminderId?: number, sub?: string, row?: string, find?: string) =>
+    invoke<void>("open_main_nav", { view, noteId: noteId ?? null, reminderId: reminderId ?? null, sub: sub ?? null, row: row ?? null, find: find || null }),
   takeNav: () => invoke<Nav | null>("take_nav"),
   /** 打开闪念输入的搜索（输入框里先放一个 ?） */
   openFlashSearch: () => invoke<void>("open_flash_search"),

@@ -32,6 +32,7 @@ describe("本地规则：测试句子", () => {
         kind: x.repeat.kind,
         urgent: x.urgent,
         guess: !!x.guess,
+        day: x.allday,
       }));
       const want = c.want.map((w) => ({
         title: w.title,
@@ -39,6 +40,7 @@ describe("本地规则：测试句子", () => {
         kind: w.repeat?.kind ?? "none",
         urgent: w.urgent ?? false,
         guess: !!w.guess,
+        day: !!w.day,
       }));
       expect(got).toEqual(want);
       expect(items.length - rems.length).toBe(c.notes ?? 0);
@@ -161,9 +163,10 @@ describe("别的", () => {
   });
 
   it("闪念输入接着补时间，预览马上变", () => {
+    // 没说哪天是待办，补上「周三」就是周三那天
     const a = parseLocal("改天请老王吃饭", dt(NOW))[0] as ParsedReminder;
     const b = parseLocal("改天请老王吃饭周三", dt(NOW))[0] as ParsedReminder;
-    expect([a.guess !== "", b.guess]).toEqual([true, ""]);
+    expect([a.due, b.guess]).toEqual(["9999-12-31 23:59", ""]);
     expect(b.due).toBe("2026-11-11 09:00");
   });
 });

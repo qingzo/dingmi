@@ -57,7 +57,7 @@ export const ROWS = {
     sources: { name: "能找到哪些程序", sub: "开始菜单、商店应用、桌面快捷方式", also: ["启动器", "程序", "软件", "搜不到", "重新找"] },
     custom: { name: "自己加的", sub: "文件夹、文件、网址", also: ["添加", "网址", "文件夹", "书签"] },
     aliases: { name: "别名和不显示的", sub: "在快捷框里右键一个程序加的", also: ["别名", "隐藏", "不显示"] },
-    pin_rows: { name: "常用显示几排", sub: "快捷框空着时的那排常用，一排 8 个；两排方便用鼠标点", also: ["常用", "两排", "图标", "收藏"] },
+    pin_rows: { name: "最近用过显示几排", sub: "快捷框空着时上面那几排最近用过的程序，一排 8 个；常用里放的另外在下面全显示", also: ["常用", "最近", "两排", "三排", "图标", "收藏", "固定"] },
     flash_space: {
       name: "空格启动",
       sub: "打了字以后，按空格也能打开程序：用方向键选中的，或者对得很准、排在第一的（还没打空格时）。打字时可能误开，用不惯就关掉",
@@ -180,7 +180,7 @@ export const T = {
   mainResetDone: "主窗口回到默认大小啦",
   posReset: "放回原位",
   posResetDone: "放回去啦，下次在屏幕中间偏上",
-  pinRows: [[1, "一排"], [2, "两排"]] as [number, string][],
+  pinRows: [[1, "一排"], [2, "两排"], [3, "三排"]] as [number, string][],
   motions: [["on", "启用动画"], ["system", "跟随 Windows"], ["reduce", "减少动画"]] as [string, string][],
   mascotFollow: (style: string, on: boolean) => `；现在跟着风格：${style}默认${on ? "开" : "关"}`,
   mascotMine: "；你改过了，换风格也不变",

@@ -55,17 +55,15 @@
         <!-- 提醒 -->
         <section class="pg" data-view="reminders" hidden>
           <div class="vh"><h3 data-t="reminders"></h3><span id="rem-tag"></span><span class="sub" id="rem-sub"></span><span class="sp"></span>
-            <div class="seg" id="rmode"><button data-rmode="todo" data-t="rmTodo"></button><button data-rmode="cycle" data-t="rmCycle"></button><button data-rmode="done" data-t="rmDone"></button></div>
+            <div class="seg" id="rmode"><button data-rmode="todo" data-t="rmTodo"></button><button data-rmode="undated" data-t="rmUndated"></button><button data-rmode="cycle" data-t="rmCycle"></button><button data-rmode="done" data-t="rmDone"></button></div>
             <button class="btn pri" id="new-rem" data-ic="plus"><span data-t="newRem"></span></button></div>
           <div class="vb" id="rem-groups"></div>
         </section>
 
-        <!-- 笔记本：笔记 / 待办 -->
+        <!-- 笔记本（笔记里的待办在提醒页「待办」里） -->
         <section class="pg" data-view="notes" hidden>
           <div class="vh"><h3 data-t="notes"></h3><span class="sub" id="nb-count"></span><span class="sp"></span>
-            <div class="seg" id="nb-mode"><button data-mode="notes" data-t="nbNotes"></button><button data-mode="todos" id="nb-todo-btn" data-t="todos"></button></div>
             <button class="btn pri" id="new-note" data-ic="plus"><span data-t="newNote"></span></button></div>
-          <div class="vb" id="nb-todos" hidden></div>
           <div class="nbk" id="nbk">
             <div class="nbk-l">
               <label class="field nbs" data-ic="search"><input id="nb-search" data-tp="nbSearch" data-tt="nbSearch"></label>

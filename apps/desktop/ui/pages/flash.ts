@@ -4,7 +4,7 @@ import { mascotOn } from "../lib/look";
 import { listen } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { api, errText, type Device, type LaunchConfig, type LaunchItem, type LaunchStats, type Note, type Reminder, type Settings } from "../lib/api";
-import { EMPTY_STATS, firstRow, iconHtml, kindText, markHit, rank, shortName, visible, whereText, type Hit as AppHit } from "../lib/launch";
+import { EMPTY_STATS, emptyRows, iconHtml, kindText, markHit, rank, shortName, visible, whereText, type Hit as AppHit } from "../lib/launch";
 import { parseLocal, type ParsedItem, type ParsedReminder } from "../lib/parse";
 import { calc, type Calc } from "../lib/calc";
 import { webHit, type WebHit } from "../lib/webkey";
@@ -13,7 +13,7 @@ import { quickSaveAll, undoSaved, type Saved } from "../lib/quick";
 import { highlight, snippet } from "@shared/md";
 import { icon, type IconName } from "@shared/icons";
 import { cat, head } from "@shared/mascot";
-import { $, ago, copyText, esc, fireAt, isRecurring, noteCatDef, parseDT, repeatLabel, setNoteCats, setTags, tagColor, tagDef, timeOf } from "@shared/util";
+import { $, ago, copyText, esc, fireAt, friendlyDay, isRecurring, isUndated, NO_DATE, noteCatDef, parseDT, repeatLabel, setNoteCats, setTags, tagColor, tagDef, timeOf } from "@shared/util";
 import { T } from "../text/quickbox";
 import { whenPast, whenShort } from "../text/cards";
 
@@ -51,14 +51,16 @@ let loadingNotes: Promise<void> | null = null;
 
 /** 常用里最多放几个（和桌面组件里一样） */
 const MAX_PINS = 12;
-/** 空着时那一排放几个（Alt + 1~8） */
-/** 常用一排几个；设置里可以开两排 */
+/** 空着时一排放几个（Alt + 1~8） */
 const FIRST_ROW = 8;
+/** 最近用过的放几排（设置里一到三排） */
 let pinRows = 1;
 /** 输入框里是带进来的字（按快捷键前选中的、上次没写完的），第一次 Esc 先清空它 */
 let picked = false;
 /** 点到别处收起时没写完的那句话：下次打开放回去。Esc 关掉、记好了、打开了东西都不留 */
 let draft = "";
+/** 输入框里的字是哪来的：typed 自己打过字，kept 上次没写完放回来的（这两种收起时留着），picked 选中的文字带进来、还没改过（收起就不要了） */
+let src: "" | "typed" | "kept" | "picked" = "";
 const MAX_APPS = 6;
 const MAX_SEARCH = 20;
 /** 记好了那一行停多久 */
@@ -74,8 +76,10 @@ type Row =
   | { kind: "web"; w: WebHit };
 let rows: Row[] = [];
 let sel = 0;
-/** 空着时那一排：常用的、最近用过的（见 launch.ts firstRow）；pinSel 是方向键选中的那个 */
+/** 空着时：最近用过的在上、常用的在下（照 ZTools；见 launch.ts emptyRows），两块连起来放在 recents 里，Alt + 数字、data-r 都照它数；pinSel 是方向键选中的那个 */
 let recents: LaunchItem[] = [];
+/** 每一排从 recents 的第几个开始（方向键上下换排） */
+let rowStarts: number[] = [];
 let pinSel = -1;
 /** 选中的那行是用方向键选的（空格启动用）；打字、鼠标挪过去都不算 */
 let arrowPicked = false;
@@ -116,6 +120,8 @@ function line(i: number, ic: string, t: string, s: string, extra = "", cls = "",
 /** 提醒什么时候：周期的写「每周五 17:00」 */
 function remWhen(r: Reminder): string {
   if (r.done) return T.remDone;
+  if (isUndated(r)) return T.todoWhen;
+  if (r.allday) return friendlyDay(fireAt(r));
   if (isRecurring(r.repeat)) return `${repeatLabel(r.repeat, r.due_at)} ${timeOf(fireAt(r))}`;
   const d = parseDT(fireAt(r));
   return d ? (d < new Date() ? whenPast(d) : whenShort(d)) : "";
@@ -133,9 +139,11 @@ function recHtml(i: number, v: string, parsed: ParsedItem[]): string {
   if (!r) return line(i, ico("rem", "bell"), esc(T.rec(v)), esc(T.noTime) + (useAI ? ` · ${esc(T.aiCheck)}` : ""));
   const tag = tagDef(r.tag);
   const place = r.only_on.length ? devices.find((d) => d.uid === r.only_on[0])?.name : "";
+  const todo = r.due === NO_DATE;
   const parts = [
-    esc(T.reminder),
-    `<b>${esc(whenShort(parseDT(r.due) ?? new Date()))}</b>`,
+    esc(todo ? T.todo : T.reminder),
+    `<b>${esc(todo ? T.todoWhen : r.allday ? friendlyDay(r.due) : whenShort(parseDT(r.due) ?? new Date()))}</b>`,
+    r.allday && esc(T.dayOnly),
     r.detail && esc(r.detail),
     isRecurring(r.repeat) && esc(repeatLabel(r.repeat, r.due)),
     r.urgent && esc(T.urgent),
@@ -146,7 +154,7 @@ function recHtml(i: number, v: string, parsed: ParsedItem[]): string {
     useAI && esc(T.aiCheck),
   ].filter(Boolean);
   const hint = r.guess ? `<span class="hint">${icon("circle-help")}${esc(r.guess + T.guessTail)}</span>` : "";
-  return line(i, ico("rem", isRecurring(r.repeat) ? "repeat" : "bell"), esc(T.rec(r.title)), parts.join(" · "), hint, hint ? " tall" : "");
+  return line(i, ico("rem", todo ? "circle-check" : isRecurring(r.repeat) ? "repeat" : "bell"), esc(T.rec(r.title)), parts.join(" · "), hint, hint ? " tall" : "");
 }
 
 function rowHtml(row: Row, i: number, v: string, parsed: ParsedItem[]): string {
@@ -162,7 +170,7 @@ function rowHtml(row: Row, i: number, v: string, parsed: ParsedItem[]): string {
   }
   if (row.kind === "rem") {
     const r = row.r;
-    return line(i, ico("rem", isRecurring(r.repeat) ? "repeat" : "bell"), highlight(esc(r.title), hl), esc(`${T.reminder} · ${remWhen(r)}`), "", r.done ? " gone" : "");
+    return line(i, ico("rem", isUndated(r) ? "circle-check" : isRecurring(r.repeat) ? "repeat" : "bell"), highlight(esc(r.title), hl), esc(`${isUndated(r) ? T.todo : T.reminder} · ${remWhen(r)}`), "", r.done ? " gone" : "");
   }
   if (row.kind === "only") return line(i, ico("note", "notebook-pen"), esc(T.noteOnly), esc(T.noteOnlySub), "", "", "Tab");
   if (row.kind === "calc") return line(i, ico("calc", "calculator"), esc(row.c.value === null ? T.calcBad : `= ${row.c.shown}`), esc(row.c.expr), "", " big");
@@ -251,7 +259,8 @@ function nextRem(): { r: Reminder; d: Date } | null {
   const me = devices.find((d) => d.me)?.uid;
   let best: { r: Reminder; d: Date } | null = null;
   for (const r of rems) {
-    if (r.done || r.deleted_at || (r.only_on.length && !(me && r.only_on.includes(me)))) continue;
+    // 只有日期的、待办不弹，不算
+    if (r.done || r.deleted_at || r.allday || isUndated(r) || (r.only_on.length && !(me && r.only_on.includes(me)))) continue;
     const d = parseDT(fireAt(r));
     if (d && d >= now && d < end && (!best || d < best.d)) best = { r, d };
   }
@@ -271,13 +280,22 @@ function nextHtml(): string {
 
 function renderEmpty() {
   rows = [];
-  recents = firstRow(shown(), cfg, stats, FIRST_ROW * (pinRows === 2 ? 2 : 1));
+  const { pins: fixed, recent } = emptyRows(shown(), cfg, stats, FIRST_ROW * Math.min(Math.max(pinRows, 1), 3));
+  recents = [...recent, ...fixed];
+  const starts = (from: number, n: number) => Array.from({ length: Math.ceil(n / FIRST_ROW) }, (_, k) => from + k * FIRST_ROW);
+  rowStarts = [...starts(0, recent.length), ...starts(recent.length, fixed.length)];
   pinSel = Math.min(pinSel, recents.length - 1);
-  const pins = recents.length
-    ? `<div class="pins" role="listbox">${recents
-        .map((it, i) => `<button class="pin" data-r="${i}" title="${esc(it.name)}" tabindex="-1">${iconHtml(it, "ic")}<span class="nm">${esc(shortName(it.name))}</span></button>`)
-        .join("")}</div>`
-    : "";
+  const grid = (list: LaunchItem[], from: number) =>
+    `<div class="pins" role="listbox">${list
+      .map((it, i) => `<button class="pin" data-r="${from + i}" title="${esc(it.name)}" tabindex="-1">${iconHtml(it, "ic")}<span class="nm">${esc(shortName(it.name))}</span></button>`)
+      .join("")}</div>`;
+  const lab = (t: string) => `<div class="plab">${esc(t)}</div>`;
+  // 两块都有才写小字；一个都没放进常用的，和以前一样只有一块
+  const pins = !recents.length
+    ? ""
+    : fixed.length && recent.length
+      ? lab(T.recentLab) + grid(recent, 0) + lab(T.pinsLab) + grid(fixed, recent.length)
+      : grid(recents, 0);
   const next = nextHtml();
   body.innerHTML = pins || next ? `<div class="sep"></div>${pins}${next}` : "";
   paintPins();
@@ -317,7 +335,7 @@ function footer() {
   const row = rows[sel];
   const move = rows.length > 1 ? k(["↑", "↓"], K.pick) : "";
   if (!v && pinSel >= 0) {
-    ft.innerHTML = k(["↵", K.space], K.open) + k(recents.length > FIRST_ROW ? ["←", "→", "↑", "↓"] : ["←", "→"], K.pick) + k(["Esc"], K.close);
+    ft.innerHTML = k(["↵", K.space], K.open) + k(rowStarts.length > 1 ? ["←", "→", "↑", "↓"] : ["←", "→"], K.pick) + k(["Esc"], K.close);
   } else if (!v) {
     ft.innerHTML = (recents.length ? k(["Alt", `1–${Math.min(recents.length, 9)}`], K.pins) + k(["←", "→"], K.pick) : "") + k(["?"], K.searchPrefix) + k(["Esc"], K.close);
   } else if (searchText(v) !== null) {
@@ -368,7 +386,8 @@ async function launch(it: LaunchItem, how: "open" | "admin" | "dir" = "open") {
 }
 
 async function openHit(row: Row) {
-  if (row.kind === "note") await api.openMainNav("notes", row.n.id);
+  // 带上搜的字：主窗口里标出来、滚到那一段
+  if (row.kind === "note") await api.openMainNav("notes", row.n.id, undefined, undefined, undefined, searchText(inp.value) ?? inp.value.trim());
   else if (row.kind === "rem") await api.openMainNav("reminders", undefined, row.r.id);
   close();
 }
@@ -421,7 +440,7 @@ function showSaved(s: Saved, text: string) {
   saved = { s, text };
   const on = mascotOn();
   const r = s.items.find(isRem);
-  const title = r ? T.savedRem(on, whenShort(parseDT(r.due) ?? new Date())) : T.savedNote(on);
+  const title = !r ? T.savedNote(on) : r.due === NO_DATE ? T.savedTodo(on) : r.allday ? T.savedDay(on, friendlyDay(r.due, false)) : T.savedRem(on, whenShort(parseDT(r.due) ?? new Date()));
   const sub = r
     ? [r.title, r.detail, s.reminders.length > 1 && T.count(s.reminders.length), r.guess && T.savedGuess, s.notes.length > 0 && T.savedAlsoNote]
     : [s.notes[0]?.title || text];
@@ -625,22 +644,26 @@ savedEl.addEventListener("mouseleave", () => {
 });
 
 inp.addEventListener("input", () => {
+  src = "typed";
   sel = 0;
   arrowPicked = false;
   if (!busy) say("");
   render();
 });
 
-/** 空着时方向键在常用里选：左右挪一个，两排时上下换一排，从第一排再往上（或第一个再往左）回到输入框；回车、空格打开 */
+/** 空着时方向键在常用、最近用过里选：左右挪一个，上下换一排（到同一列，那一排短就到最后一个），从第一排再往上（或第一个再往左）回到输入框；回车、空格打开 */
 function emptyKey(e: KeyboardEvent) {
   const n = recents.length;
   if (/^Arrow(Right|Down|Left|Up)$/.test(e.key) && n) {
     e.preventDefault();
+    let r = rowStarts.length - 1;
+    while (r > 0 && rowStarts[r] > pinSel) r--;
+    const to = (row: number) => Math.min(rowStarts[row] + pinSel - rowStarts[r], (rowStarts[row + 1] ?? n) - 1);
     if (pinSel < 0) pinSel = e.key === "ArrowRight" || e.key === "ArrowDown" ? 0 : -1;
     else if (e.key === "ArrowRight") pinSel = Math.min(pinSel + 1, n - 1);
     else if (e.key === "ArrowLeft") pinSel -= 1;
-    else if (e.key === "ArrowDown") pinSel = pinSel < FIRST_ROW && n > FIRST_ROW ? Math.min(pinSel + FIRST_ROW, n - 1) : pinSel;
-    else pinSel = pinSel >= FIRST_ROW ? pinSel - FIRST_ROW : -1;
+    else if (e.key === "ArrowDown") pinSel = r + 1 < rowStarts.length ? to(r + 1) : pinSel;
+    else pinSel = r > 0 ? to(r - 1) : -1;
     paintPins();
   } else if (e.key === "Enter" || (e.key === " " && pinSel >= 0)) {
     // 空格只在选中了图标时算打开，不然就是打了个空格
@@ -736,6 +759,7 @@ function clear() {
   inp.disabled = false;
   inp.value = "";
   picked = false;
+  src = "";
   say("");
   closeMenu();
   rows = [];
@@ -775,20 +799,21 @@ async function reset() {
   devices = devs;
   stats = st;
   rems = rs;
-  // 上次没写完的放回去；没有的话，按快捷键前在别的程序里选中的文字带进来（多行合成一行）。主窗口点「搜索」带来的 ? 优先
-  const text = pickedText?.startsWith("?") ? pickedText : kept || pickedText;
+  // 这次按快捷键前在别的程序里选中了文字（多行合成一行，主窗口点「搜索」带来的 ? 也是）就用这次的；没有的话，上次没写完的放回去
+  const text = pickedText || kept;
   if (text && !inp.value) {
     inp.value = oneLine(text);
     picked = true;
+    src = pickedText ? "picked" : "kept";
   }
   render();
   inp.focus();
   inp.setSelectionRange(inp.value.length, inp.value.length);
 }
 
-/** 先清空再藏起来：下次显示时不会先闪一下上次的内容；消失不留动画。keep：没写完的字留着下次放回去 */
+/** 先清空再藏起来：下次显示时不会先闪一下上次的内容；消失不留动画。keep：没写完的字留着下次放回去（选中文字带进来、一个字没改的不留） */
 function close(keep = false) {
-  draft = keep && !saved && inp.value.trim() ? inp.value : "";
+  draft = keep && !saved && (src === "typed" || src === "kept") && inp.value.trim() ? inp.value : "";
   dragUntil = 0;
   stage.classList.add("gone");
   clear();
@@ -851,9 +876,11 @@ inp.setAttribute("aria-label", T.inputLabel);
 listen("flash-open", () => reset());
 // 按快捷键前在别的程序里选中的文字，复制得慢的随后才到（见 lib.rs open_flash）；已经开始打字了就不管
 listen<string>("flash-text", ({ payload }) => {
-  if (inp.value || busy || saved) return;
+  // 放回来的上次没写完的、还没动过：换成这次选中的
+  if ((inp.value && src !== "kept") || busy || saved) return;
   inp.value = oneLine(payload);
   picked = true;
+  src = "picked";
   render();
   inp.setSelectionRange(inp.value.length, inp.value.length);
 });

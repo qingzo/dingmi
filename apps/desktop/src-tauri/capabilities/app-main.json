@@ -6,6 +6,7 @@
     "main"
   ],
   "permissions": [
+    "allow-add-category",
     "allow-ai-parse",
     "allow-ai-test",
     "allow-ai-tidy-note",

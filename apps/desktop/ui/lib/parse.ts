@@ -1,7 +1,7 @@
 // 把一句话拆成提醒/笔记。优先用 AI，没有 Key 或出错时用这里的本地规则兜底。
 // 本地规则认哪些说法见 docs/方案/需求-0.2.md 第 8 节，测试句子在 parse.cases.ts（npm test）。
 import { api, errText, newNote, newReminder, type Device, type Note, type Reminder, type Repeat, type Tag } from "./api";
-import { addDays, fmtDT, noteCatDef, noteCatList, parseDT, tagDef, tagList } from "@shared/util";
+import { addDays, fmtDT, NO_DATE, noteCatDef, noteCatList, parseDT, tagDef, tagList } from "@shared/util";
 import { lunarLabel, toLunar } from "@shared/lunar";
 import { lastDayOfMonth, normalize, weekday } from "@shared/recur";
 
@@ -17,6 +17,8 @@ export interface ParsedReminder {
   only_on: string[];
   /** 说得含糊、时间是先定的："没听清具体时间，先定在明天 9:00"。空表示说清楚了 */
   guess: string;
+  /** 只说了哪天、没说几点：那天出现在「今天」里，不弹窗（due 是那天 09:00）。due 是 NO_DATE 的是待办 */
+  allday: boolean;
 }
 export interface ParsedNote {
   type: "note";
@@ -215,10 +217,16 @@ export function parseLocal(input: string, now = new Date(), devices: Device[] = 
     text = text.slice(0, nm.index).trim();
   }
 
+  // 「待办」开头的一定记成待办：后面说了时间的照常认，没说的就是待办（需求-1.x 第 40 节）
+  const forced = text.match(/^待办\s*[:：，,]?\s*/);
+  if (forced) text = text.slice(forced[0].length).trim();
+
   const items: ParsedItem[] = [];
   for (const one of splitEvents(text, now)) {
     for (const r of one.items) items.push({ ...r, only_on: place.only_on });
   }
+  // 没说时间：是一件要去做的事就记成待办，不然存成笔记
+  if (!items.length && text && (forced || looksTodo(text))) items.push(todoItem(clean(text) || text, place.only_on));
 
   if (noteText || !items.length) {
     const body = noteText || input.trim();
@@ -232,6 +240,24 @@ export function parseLocal(input: string, now = new Date(), devices: Device[] = 
     });
   }
   return items;
+}
+
+/** 说了时间的提醒（不是待办）：推迟、设提醒这些只要时间的地方用 */
+export const hasTime = (x: ParsedItem): x is ParsedReminder => x.type === "reminder" && x.due !== NO_DATE;
+
+/** 待办：没定时间的提醒 */
+function todoItem(title: string, only_on: string[] = []): ParsedReminder {
+  return { type: "reminder", title, detail: "", tag: guessTag(title), due: NO_DATE, repeat: { kind: "none", days: [], monthday: 0, every: 0, month: 0, nth: 0 }, urgent: false, only_on, guess: "", allday: false };
+}
+
+/** 要去做的事常用这些字开头（「整理资料」「给王总回邮件」）；后面紧跟「了」「过」的是在说做过了（「买了一本书」） */
+const TODO_VERB =
+  /^(?:整理|收拾|打扫|清理|清洗|采购|购买|买|交|缴|还|退|寄|取|拿|送|回复|回|联系|打电话|给|约|预约|订|办|处理|修|改|写|准备|看|读|学|练|复习|查|找|问|跟进|安排|提交|报名|申请|续费|续|更新|备份|洗|换|装|下载|上传|发|签|填|确认|检查|对接|沟通|讨论|研究|测试|部署|补|做|去|带|充|缴费|剪|理|搬|配|挂号|体检|复盘|总结|汇报|核对|对账)(?![了过])/;
+
+/** 没说时间的一句话像不像一件要去做的事：一行、不长、没有冒号，以要去做的动作开头 */
+export function looksTodo(s: string): boolean {
+  const t = s.trim();
+  return !/\n/.test(t) && [...t].length <= 20 && !/[:：]|https?:\/\//.test(t) && TODO_VERB.test(t);
 }
 
 /** 用逗号、分号分开、各自带时间的几件事拆开；没带时间的那段跟着前一件事 */
@@ -288,7 +314,7 @@ function parseOne(text: string, now: Date, prevDate: Date | null): One {
 
   // 说得含糊
   let vague: "tomorrow" | "days" | "month" | "week" | null = null;
-  if (cut(/改天|回头|有空(?:的时候|时|了|再)?|有时间(?:的时候|时|了)?/)) vague = "tomorrow";
+  if (cut(/改天|回头|抽空|有空(?:的时候|时|了|再)?|有时间(?:的时候|时|了)?|找(?:个|点)?时间/)) vague = "tomorrow";
   else if (cut(/过(?:几|些)天/)) vague = "days";
 
   // ---------- 周期 ----------
@@ -529,12 +555,19 @@ function parseOne(text: string, now: Date, prevDate: Date | null): One {
   const one: One = { items: [], hasWhen, title, date: explicitDate ? date : null };
   if (!hasWhen && !wantsReminder) return one;
 
+  // 「有空整理资料」「改天去看奶奶」：没说哪天、几点，不再先定一个时间，记成待办
+  if (vague === "tomorrow" && !recurring && !date && !hasClock && !rel && !relDay) {
+    one.items.push({ ...todoItem(title || "待办"), urgent });
+    return one;
+  }
+
   // ---------- 算时间 ----------
   const base = date ?? (hasClock && prevDate ? prevDate : today);
   const sameDate = !!date || (hasClock && !!prevDate);
   const details: string[] = [];
   if (lunarNote) details.push(lunarNote);
   let guess = "";
+  let allday = false;
   const dues: Date[] = [];
   /** 周期提醒：每条自己的规则（每月 1 号和 15 号是两条） */
   const repeats: [Repeat, Date][] = [];
@@ -573,8 +606,11 @@ function parseOne(text: string, now: Date, prevDate: Date | null): One {
       }
       dues.push(due);
     }
-  } else if (date) dues.push(at(date, 9, 0));
-  else if (vague) dues.push(at(today, 9, 0));
+  } else if (date) {
+    dues.push(at(date, 9, 0));
+    // 一次性的、只说了哪天：那天出现在「今天」里，不弹窗；说了「提醒我」「记得」的、紧急的照旧 9 点弹
+    allday = !vague && !wantsReminder && !ahead && !urgent;
+  } else if (vague) dues.push(at(today, 9, 0));
   else {
     // 只说了"提醒我"：一小时后
     const due = ceil5(addMin(now, 60));
@@ -601,7 +637,7 @@ function parseOne(text: string, now: Date, prevDate: Date | null): One {
       detail.push(`事情本身在 ${due.getMonth() + 1}月${due.getDate()}日 ${hm(due)}`);
       due = addMin(due, -ahead);
     }
-    one.items.push({ type: "reminder", title: title || "时间到了", detail: detail.join("，"), tag, due: fmtDT(due), repeat: rule, urgent, only_on: [], guess });
+    one.items.push({ type: "reminder", title: title || "时间到了", detail: detail.join("，"), tag, due: fmtDT(due), repeat: rule, urgent, only_on: [], guess, allday });
   }
   return one;
 }
@@ -673,7 +709,10 @@ export function normalizeAI(raw: unknown, devices: Device[] = [], now = new Date
   const out: ParsedItem[] = [];
   for (const it of list as Record<string, any>[]) {
     const tag = tagDef(it?.tag) ? (it.tag as Tag) : null;
-    if (it?.type === "reminder" && typeof it.title === "string" && parseDT(it.due)) {
+    // 待办：AI 给的时间是空的
+    if (it?.type === "reminder" && typeof it.title === "string" && it.title.trim() && !String(it.due ?? "").trim()) {
+      out.push({ ...todoItem(it.title.trim()), detail: typeof it.detail === "string" ? it.detail : "", tag, urgent: !!it.urgent });
+    } else if (it?.type === "reminder" && typeof it.title === "string" && parseDT(it.due)) {
       const r = it.repeat ?? {};
       const repeat: Repeat = {
         kind: KINDS.has(r.kind) ? r.kind : "none",
@@ -698,6 +737,8 @@ export function normalizeAI(raw: unknown, devices: Device[] = [], now = new Date
           : [],
         // AI 说含糊的，和本地规则一样标出来
         guess: it.vague === true ? `没听清具体时间，先定在${whenWord(parseDT(due)!, now)}` : "",
+        // 只有日期：一次性的才算（周期的照常到点弹）
+        allday: it.allday === true && repeat.kind === "none" && it.vague !== true && !it.urgent,
       });
     } else if (it?.type === "note" && (it.title || it.body)) {
       const body = String(it.body ?? it.title);
@@ -749,7 +790,7 @@ export async function saveParsed(items: ParsedItem[]): Promise<{ reminders: Remi
   for (const it of items) {
     if (it.type !== "reminder") continue;
     const saved = await api.saveReminder(
-      newReminder({ title: it.title, detail: it.detail, tag: it.tag, due_at: it.due, repeat: it.repeat, urgent: it.urgent, only_on: it.only_on, vague: !!it.guess }),
+      newReminder({ title: it.title, detail: it.detail, tag: it.tag, due_at: it.due, repeat: it.repeat, urgent: it.urgent, only_on: it.only_on, vague: !!it.guess, allday: it.allday }),
     );
     reminders.push(saved);
   }

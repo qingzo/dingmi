@@ -1,6 +1,6 @@
 [package]
 name = "dingmi-server"
-version = "1.0.8"
+version = "1.0.9"
 description = "叮咪的同步服务器：一个端口同时服务电脑端（Noise 加密）和手机网页（HTTPS，自签证书）"
 edition = "2021"
 license = "AGPL-3.0-only"

@@ -100,6 +100,7 @@ const COMMANDS: &[&str] = &[
     "save_png",
     "save_reminder",
     "save_settings",
+    "add_category",
     "set_focus",
     "show_quiet",
     "sync_change_password",

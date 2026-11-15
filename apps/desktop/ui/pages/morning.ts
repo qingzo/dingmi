@@ -57,14 +57,14 @@ function render(reminders: Reminder[], notes: Note[]) {
   const yesterday = dayStr(addDays(now, -1));
   const say = empty
     ? T.free(catOn, esc(hotkeyText(settings?.hk_flash ?? "Alt+Space")))
-    : T.say(today.length, top ? `${timeOf(fireAt(top))} ${esc(top.title)}` : "", late.length, late.every((r) => fireAt(r).slice(0, 10) === yesterday));
+    : T.say(today.length, top ? `${top.allday ? "" : timeOf(fireAt(top)) + " "}${esc(top.title)}` : "", late.length, late.every((r) => fireAt(r).slice(0, 10) === yesterday));
   const todayRows = top ? [top, ...today.filter((r) => r !== top)] : today;
 
   const groups: string[] = [];
   if (today.length) {
     const shownRows = todayRows.slice(0, MAX);
     groups.push(`<div class="grp"><h5>${icon("sun")}${T.today} <span class="n">${T.count(today.length)}</span></h5><div class="mini">
-      ${shownRows.map((r) => row(r, `<span class="tm">${timeOf(fireAt(r))}</span>`, r === top ? "top1" : "", r === top ? `<b>${T.top}</b>` : "")).join("")}
+      ${shownRows.map((r) => row(r, `<span class="tm">${r.allday ? T.allDay : timeOf(fireAt(r))}</span>`, r === top ? "top1" : "", r === top ? `<b>${T.top}</b>` : "")).join("")}
       ${today.length > MAX ? `<div class="it rest"><span class="t">${T.restMore(today.length - MAX)}</span></div>` : ""}</div></div>`);
   }
   if (late.length) {
@@ -176,7 +176,7 @@ $("#card").addEventListener("mousedown", (e) => {
   await fit();
   const lines = [
     "今天的日程：",
-    ...today.map((r) => `- ${timeOf(fireAt(r))} ${r.title}${r.detail ? `（${r.detail}）` : ""}${r.urgent ? " [紧急]" : ""}${isRecurring(r.repeat) ? " [周期]" : ""}`),
+    ...today.map((r) => `- ${r.allday ? "今天之内" : timeOf(fireAt(r))} ${r.title}${r.detail ? `（${r.detail}）` : ""}${r.urgent ? " [紧急]" : ""}${isRecurring(r.repeat) ? " [周期]" : ""}`),
     ...(late.length ? ["之前没处理完的：", ...late.map((r) => `- ${fireAt(r)} ${r.title}`)] : []),
     "最近的笔记：",
     ...notes.slice(0, 5).map((n) => `- ${n.title}：${plain(n.body).slice(0, 60)}`),

@@ -2,7 +2,7 @@
 // 实时显示理解成几点；下面几个常用时间。设过的能改、能「不提醒了」
 import "../styles/editor.css";
 import { esc, friendlyDT } from "@shared/util";
-import { parseLocal } from "./parse";
+import { hasTime, parseLocal } from "./parse";
 import { T } from "../text/notes";
 
 export interface RemindAsk {
@@ -19,8 +19,8 @@ export interface RemindAsk {
 
 /** 一句话里说的时间；没说时间回 null */
 export function whenOf(text: string): string | null {
-  const r = parseLocal(text).find((i) => i.type === "reminder");
-  return r && r.type === "reminder" ? r.due : null;
+  const r = parseLocal(text).find(hasTime);
+  return r ? r.due : null;
 }
 
 let closeOpen: (() => void) | null = null;

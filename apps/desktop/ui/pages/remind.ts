@@ -4,7 +4,7 @@ import "../lib/look";
 import { listen } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { api, errText, type Device, type Note, type Reminder, type ReminderAction } from "../lib/api";
-import { parseLocal } from "../lib/parse";
+import { hasTime, parseLocal } from "../lib/parse";
 import { icon } from "@shared/icons";
 import { cat, type CatMood } from "@shared/mascot";
 import { $, addDays, chime, esc, fireAt, fmtDT, isRecurring, parseDT, repeatLabel, setTags, tagHtml } from "@shared/util";
@@ -162,8 +162,8 @@ function renderPick() {
 /** 打的那句话理解成几点：没打是 null */
 function guess(v: string): Date | "none" | "past" | null {
   if (!v.trim()) return null;
-  const it = parseLocal(v, new Date(), devices).find((x) => x.type === "reminder");
-  const d = it?.type === "reminder" ? parseDT(it.due) : null;
+  const it = parseLocal(v, new Date(), devices).find(hasTime);
+  const d = it ? parseDT(it.due) : null;
   if (!d) return "none";
   return d <= new Date() ? "past" : d;
 }

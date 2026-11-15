@@ -117,6 +117,12 @@ kbd { font: 500 calc(11px * var(--fs)) var(--f-ui); color: var(--ink-2); backgro
 .menu { min-width: 200px; background: var(--surf); border-radius: var(--r-md); box-shadow: var(--sh-3); padding: 4px; }
 .mi { display: flex; align-items: center; gap: 8px; width: 100%; padding: 6px 8px; border: 0; background: none; border-radius: 6px; font-size: calc(12.5px * var(--fs)); text-align: left; }
 .mi:hover, .mi.hov { background: var(--hover); }
+/* 写东西时顺手加分类（lib/catnew.ts）：一排胶囊、分类菜单最后的「＋ 新分类」，点了换成输入框 */
+.newcat { color: var(--ink-3); }
+.chipsel.newcat { border-style: dashed; }
+.newcat .lucide { width: 13px; height: 13px; }
+.field.catin { height: 28px; width: 9em; font-size: calc(12px * var(--fs)); }
+.menu .field.catin { width: 100%; margin: 2px 0; }
 .mi .lucide { width: 15px; height: 15px; color: var(--ink-2); }
 .mi kbd { margin-left: auto; height: 18px; }
 .mi.danger, .mi.danger .lucide { color: var(--danger); }

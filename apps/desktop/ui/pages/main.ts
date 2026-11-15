@@ -18,13 +18,14 @@ import { attView } from "../lib/official";
 import { createNoteEditor, EDIT_KEYS, fillToolbar, type NoteEditor } from "../lib/editor";
 import { askRemind } from "../lib/remindpop";
 import { openTableGrid } from "../lib/tablegrid";
-import { parseLocal, saveParsed, smartParse, type ParsedItem } from "../lib/parse";
+import { hasTime, parseLocal, saveParsed, smartParse, type ParsedItem } from "../lib/parse";
+import { newCatButton, openCatInput, type CatField } from "../lib/catnew";
 import { askTidy } from "../lib/tidyask";
 import { dayDiff, whenText } from "../lib/when";
 import { icon, type IconName } from "@shared/icons";
 import { appIcon, cat, type CatMood } from "@shared/mascot";
 import {
-  $, $$, addDays, ago, copyText, dayStr, debounce, esc, fireAt, fmtDT, greeting, hotkeyText, isRecurring, noteCatDef, noteCatHtml,
+  $, $$, addDays, ago, copyText, dayStr, debounce, esc, fireAt, fmtDT, greeting, hotkeyText, isLate, isRecurring, isUndated, NO_DATE, noteCatDef, noteCatHtml,
   noteCatList, parseDT, repeatLabel, setNoteCats, setTags, tagColor, tagHtml, tagList, timeOf, weekdayCn,
 } from "@shared/util";
 import { readRepeatExtras, REPEAT_KINDS, repeatExtrasHtml, showRepeatExtras } from "@shared/repeat-edit";
@@ -134,7 +135,6 @@ function renderAll() {
   renderInbox();
   renderReminders();
   renderNotes();
-  renderTodos();
   renderTrash();
 }
 
@@ -163,6 +163,34 @@ function fullWhen(f: string) {
   return d ? `${dateCn(d)} ${weekdayCn(d)} ${timeOf(f)}` : "";
 }
 
+/** 一条提醒右边那一栏：待办不写；只有日期的，今天（不在「今天」「明天」组里时只有今天）写「全天」，别的天写哪天 */
+function remTime(r: Reminder, loose = false): string {
+  if (isUndated(r)) return "";
+  const f = fireAt(r);
+  if (!r.allday) return timeCol(f, loose);
+  const d = parseDT(f);
+  if (!d) return "";
+  const n = dayDiff(d);
+  if (n === 0 || (n === 1 && !loose)) return T.allDay;
+  if (n === 1) return T.tomorrow;
+  if (n === -1) return T.yesterday;
+  if (n > 1 && n < 7) return weekdayCn(d);
+  return dateCn(d);
+}
+
+/** 写全的时间：待办写「待办」，只有日期的不写钟点 */
+function remWhen(r: Pick<Reminder, "due_at" | "snoozed_until" | "allday">): string {
+  if (isUndated(r)) return T.ui.rmUndated;
+  const f = r.snoozed_until ?? r.due_at;
+  const d = parseDT(f);
+  return !r.allday ? fullWhen(f) : d ? `${dateCn(d)} ${weekdayCn(d)}` : "";
+}
+
+/** 存好以后底下那句话 */
+function savedSay(r: Reminder) {
+  return isUndated(r) ? T.savedTodo : r.allday ? T.savedDay(remWhen(r)) : T.savedRem(fullWhen(fireAt(r)));
+}
+
 /** 做完的时间：今天写钟点，别的天写日期 */
 function doneTime(r: Reminder) {
   const s = r.completed_at ?? r.last_done_at ?? fireAt(r);
@@ -174,14 +202,16 @@ function todayData() {
   const now = new Date();
   const tk = todayKey();
   const tm = dayStr(addDays(now, 1));
-  const active = S.reminders.filter((r) => !r.done);
-  const late = active.filter((r) => (parseDT(fireAt(r)) ?? now) < now).sort(byFire);
-  const today = active.filter((r) => fireAt(r).slice(0, 10) === tk && (parseDT(fireAt(r)) ?? now) >= now).sort(byFire);
+  const active = S.reminders.filter((r) => !r.done && !isUndated(r));
+  const late = active.filter((r) => isLate(r, now)).sort(byFire);
+  const today = active.filter((r) => fireAt(r).slice(0, 10) === tk && !isLate(r, now)).sort(byFire);
   const doneToday = S.reminders.filter(
     (r) => (r.done && r.completed_at?.startsWith(tk)) || (isRecurring(r.repeat) && r.last_done_at?.startsWith(tk)),
   );
   const tomorrow = active.filter((r) => fireAt(r).slice(0, 10) === tm).sort(byFire);
-  return { late, today, doneToday, tomorrow };
+  // 待办：没定时间的，先记的在前
+  const undated = S.reminders.filter((r) => !r.done && isUndated(r)).sort((a, b) => a.created_at.localeCompare(b.created_at));
+  return { late, today, doneToday, tomorrow, undated };
 }
 
 const count = (n: number) => (n ? String(n) : "");
@@ -215,9 +245,7 @@ let editingRid = 0;
 
 /** 一行提醒：圆形完成勾、标题和补充说明、小图标、分类、时间；鼠标停上去时间换成改、推迟、删除 */
 function remRow(r: Reminder, o: { done?: boolean; loose?: boolean } = {}) {
-  const f = fireAt(r);
-  const fd = parseDT(f);
-  const late = !o.done && !!fd && fd < new Date();
+  const late = !o.done && isLate(r);
   const rec = isRecurring(r.repeat);
   const note = r.note_uid ? S.notes.find((n) => n.uid === r.note_uid) : null;
   const ico = (n: IconName, tip: string) => `<span class="ico" title="${esc(tip)}">${I(n)}</span>`;
@@ -234,8 +262,9 @@ function remRow(r: Reminder, o: { done?: boolean; loose?: boolean } = {}) {
     r.tag && !(rec && r.tag === "cycle") ? tagHtml(r.tag) : "",
   ].join("");
   const btn = (act: string, ic: IconName, tip: string) => `<button class="btn sm ghost icon" data-ract="${act}" title="${tip}" aria-label="${tip}">${I(ic)}</button>`;
-  const acts = o.done ? "" : `<span class="hacts">${btn("edit", "pencil", T.edit)}${btn("snooze", "alarm-clock", T.snooze)}${btn("del", "trash-2", T.del)}</span>`;
-  const time = o.done ? doneTime(r) : timeCol(f, o.loose);
+  // 待办没有时间，不能推迟
+  const acts = o.done ? "" : `<span class="hacts">${btn("edit", "pencil", T.edit)}${isUndated(r) ? "" : btn("snooze", "alarm-clock", T.snooze)}${btn("del", "trash-2", T.del)}</span>`;
+  const time = o.done ? doneTime(r) : remTime(r, o.loose);
   return `<div class="it${o.done ? " done" : ""}${r.id === editingRid ? " sel" : ""}" data-rid="${r.id}">
     <button class="task${r.urgent && !o.done ? " urg" : ""}${o.done ? " on" : ""}" data-chk="${r.id}" data-done="${o.done ? 1 : 0}" aria-label="${o.done ? T.undoDone : T.markDone}">${I("check")}</button>
     <span class="t">${esc(r.title)}${r.detail ? `<small>${esc(r.detail)}</small>` : ""}</span>${icons}${tags}<span class="tm num${late ? " late" : ""}">${time}</span>${acts}</div>`;
@@ -266,23 +295,35 @@ function flashKeys() {
 function renderToday() {
   const now = new Date();
   const mascot = mascotOn();
-  const { late, today, doneToday, tomorrow } = todayData();
+  const { late, today, doneToday, tomorrow, undated } = todayData();
   const left = late.length + today.length;
   $("#greet").textContent = greeting(now.getHours());
   $("#today-sub").textContent = T.todaySub(dateCn(now), weekdayCn(now), left);
   capHint();
 
   // 今天：没做的和今天做完的放在一起，按时间排
-  const todayRows = [...today.map((r) => ({ r, done: false, k: timeOf(fireAt(r)) })), ...doneToday.map((r) => ({ r, done: true, k: doneTime(r) }))]
+  // 只有日期的排在最前面
+  const todayRows = [...today.map((r) => ({ r, done: false, k: r.allday ? "" : timeOf(fireAt(r)) })), ...doneToday.map((r) => ({ r, done: true, k: doneTime(r) }))]
     .sort((a, b) => a.k.localeCompare(b.k))
     .map((x) => remRow(x.r, { done: x.done }))
     .join("");
   const tmDate = addDays(now, 1);
   const recent = S.notes.slice(0, 3);
+  // 待办：放几件，多的去提醒页看
+  const UNDATED_MAX = 5;
+  const undatedGrp = undated.length
+    ? grp(
+        T.ui.rmUndated,
+        undated.slice(0, UNDATED_MAX).map((r) => remRow(r)).join("") +
+          (undated.length > UNDATED_MAX ? `<button class="more" data-goundated>${T.undatedMore(undated.length - UNDATED_MAX)}</button>` : ""),
+        { n: undated.length },
+      )
+    : "";
   let html = late.length ? grp(T.late, late.map((r) => remRow(r)).join(""), { late: true }) : "";
   if (left) {
     html += grp(T.today, todayRows);
     if (tomorrow.length) html += grp(T.tomorrowFull(dateCn(tmDate), weekdayCn(tmDate)), tomorrow.map((r) => remRow(r)).join(""));
+    html += undatedGrp;
     html += `<div class="recent">${recent.length ? `${I("file-text", "s16")}${T.recent}${recent.map((n) => `<button data-open-note="${n.id}">${esc(n.title || T.blankNote)}</button>`).join("·")}` : ""}<button class="add" data-newnote>${I("plus", "s16")}${T.newNoteShort}</button></div>`;
   } else {
     const keys = flashKeys();
@@ -296,6 +337,7 @@ function renderToday() {
         .join("");
       html += `<div class="two">${grp(T.tomorrow, tomorrow.map((r) => remRow(r)).join("") || `<p class="none">${T.tomorrowFree}</p>`)}${recent.length ? grp(T.recentTitle, notes) : ""}</div>`;
     }
+    html += undatedGrp;
   }
   $("#today-list").innerHTML = html;
   renderFocus();
@@ -544,7 +586,8 @@ function parsedRow(it: ParsedItem, i: number, hasRem: boolean) {
       it.only_on.length ? `<span class="tag" style="--c:var(--tc-gray)">${I("monitor")}${esc(onlyOnLabel(it.only_on))}</span>` : "",
       tagHtml(it.tag),
     ].join("");
-    return `<div class="pp-row">${I("bell", "s16")}<span class="t"><b>${esc(it.title)}</b><small>${T.remindAt(fullWhen(it.due))}${it.detail ? " · " + esc(it.detail) : ""}${it.guess ? ` · <span class="warn">${esc(it.guess)}</span>` : ""}</small></span>${tags}${btns}</div>`;
+    const when = it.due === NO_DATE ? T.undatedAt : it.allday ? T.dayAt(remWhen({ due_at: it.due, snoozed_until: null, allday: true })) : T.remindAt(fullWhen(it.due));
+    return `<div class="pp-row">${I(it.due === NO_DATE ? "circle-check" : "bell", "s16")}<span class="t"><b>${esc(it.title)}</b><small>${when}${it.detail ? " · " + esc(it.detail) : ""}${it.guess ? ` · <span class="warn">${esc(it.guess)}</span>` : ""}</small></span>${tags}${btns}</div>`;
   }
   const body = plain(it.body);
   return `<div class="pp-row">${I("file-text", "s16")}<span class="t"><b>${esc(it.title)}</b><small>${esc(body.length > 60 ? body.slice(0, 60) + "…" : body)}${it.link && hasRem ? T.linkAbove : ""}</small></span>${noteCatHtml(it.tag)}${btns}</div>`;
@@ -589,12 +632,12 @@ $("#parse").addEventListener("click", (e) => {
       const it = items[i];
       if (it.type === "reminder") {
         openEditor(
-          newReminder({ title: it.title, detail: it.detail, tag: it.tag, due_at: it.due, repeat: it.repeat, urgent: it.urgent, only_on: it.only_on, vague: !!it.guess }),
+          newReminder({ title: it.title, detail: it.detail, tag: it.tag, due_at: it.due, repeat: it.repeat, urgent: it.urgent, only_on: it.only_on, vague: !!it.guess, allday: it.allday }),
           {
             draft: (r) => {
               // 改过时间就不算含糊了
               const guess = r.due_at === it.due ? it.guess : "";
-              items[i] = { type: "reminder", title: r.title, detail: r.detail, tag: r.tag, due: r.due_at, repeat: r.repeat, urgent: r.urgent, only_on: r.only_on, guess };
+              items[i] = { type: "reminder", title: r.title, detail: r.detail, tag: r.tag, due: r.due_at, repeat: r.repeat, urgent: r.urgent, only_on: r.only_on, guess, allday: !!r.allday };
               renderParse();
             },
           },
@@ -630,7 +673,8 @@ $("#manual").onclick = () => {
     },
   });
 };
-$("#new-rem").onclick = () => openEditor(newReminder({ tag: S.rTag }));
+// 在「待办」那一栏点：新建的就是待办（「什么时候」空着）
+$("#new-rem").onclick = () => openEditor(newReminder({ tag: S.rTag, ...(S.rMode === "undated" ? { due_at: NO_DATE } : {}) }));
 
 // ---------- 改提醒、新建提醒：从右边滑出的抽屉 ----------
 
@@ -709,9 +753,28 @@ function pickOne(box: HTMLElement, b: HTMLElement) {
 const catChips = (list: { id: string; name: string; color: string }[], sel: Tag | null) =>
   list.map((t) => `<button type="button" class="chipsel" data-tag="${esc(t.id)}" style="${tagColor(t.color)}" aria-pressed="${sel === t.id}"><span class="sq"></span>${esc(t.name)}</button>`).join("");
 
+/** 抽屉里分类那一排最后的「＋ 新分类」：加好就选上（需求-1.x 第 41 节） */
+function newCatChip(box: HTMLElement, btn: HTMLElement, field: CatField) {
+  openCatInput(
+    btn,
+    field,
+    (t) => {
+      (field === "tags" ? setTags : setNoteCats)([...(field === "tags" ? tagList() : noteCatList()).filter((x) => x.id !== t.id), t]);
+      $$("[data-tag]", box).forEach((c) => c.setAttribute("aria-pressed", "false"));
+      const had = box.querySelector<HTMLElement>(`[data-tag="${CSS.escape(t.id)}"]`);
+      if (had) had.setAttribute("aria-pressed", "true");
+      else box.querySelector("[data-newcat]")!.insertAdjacentHTML("beforebegin", catChips([t], t.id));
+    },
+    (msg) => say(msg),
+  );
+}
+
 /** draft：改随手记整理出来的草稿，只回传结果不存；afterSave：真正存好后 */
 function openEditor(r: Reminder, o: { draft?: (r: Reminder) => void; afterSave?: () => void } = {}) {
   let due = r.due_at || nextHour();
+  /** 待办（「什么时候」空着）、只说了哪天 */
+  let undated = isUndated({ due_at: due });
+  let allday = !!r.allday && !undated;
   /** 「什么时候」改过；没改过就用原来的时间（过了点的也不会被挪到明天） */
   let dirty = false;
   let understood = true;
@@ -722,18 +785,18 @@ function openEditor(r: Reminder, o: { draft?: (r: Reminder) => void; afterSave?:
   editingRid = r.id;
   $$(`.it[data-rid="${r.id}"]`).forEach((x) => x.classList.add("sel"));
   showDrawer(`
-    <div class="dh"><b>${r.id ? T.d.editTitle : T.d.newTitle}</b><button type="button" class="btn sm ghost icon" data-dclose title="${T.close}" aria-label="${T.close}">${I("x")}</button></div>
+    <div class="dh"><b>${undated ? (r.id ? T.d.editTodo : T.d.newTodo) : r.id ? T.d.editTitle : T.d.newTitle}</b><button type="button" class="btn sm ghost icon" data-dclose title="${T.close}" aria-label="${T.close}">${I("x")}</button></div>
     <div class="db">
       <label class="fl"><span>${T.d.what}</span><input class="field big" id="ed-title" value="${esc(r.title)}" placeholder="${T.d.whatPh}"></label>
       <div class="fl"><label for="ed-when">${T.d.when}</label>
-        <div class="field when" id="ed-whenbox"><input id="ed-when" value="${esc(whenText(due))}" placeholder="${T.d.whenPh}" autocomplete="off" spellcheck="false"><span class="pv" id="ed-pv"></span><button type="button" class="pick" id="ed-pick" title="${T.d.pick}" aria-label="${T.d.pick}">${I("calendar-days", "s16")}</button></div>
+        <div class="field when" id="ed-whenbox"><input id="ed-when" value="${esc(whenText(due, new Date(), allday))}" placeholder="${T.d.whenPh}" autocomplete="off" spellcheck="false"><span class="pv" id="ed-pv"></span><button type="button" class="pick" id="ed-pick" title="${T.d.pick}" aria-label="${T.d.pick}">${I("calendar-days", "s16")}</button></div>
         <div class="rowf" id="ed-dt" hidden><input class="field" type="date" id="ed-date" aria-label="${T.d.date}"><input class="field" type="time" id="ed-time" aria-label="${T.d.time}"></div>
         <span class="fhelp warn" id="ed-guess"></span>
       </div>
       <div class="rowf"><button type="button" class="chipsel" id="ed-rep" aria-expanded="false">${I("repeat")}<span id="ed-rep-t"></span></button></div>
       <div class="repbox" id="ed-repbox" hidden>${repeatBoxHtml(r.repeat, due)}</div>
       <label class="fl"><span>${T.d.detail}</span><textarea class="field" id="ed-detail" rows="2" placeholder="${T.d.detailPh}">${esc(r.detail)}</textarea></label>
-      ${tagList().length ? `<div class="fl"><span>${T.d.cat}</span><div class="rowf" id="ed-tags">${catChips(tagList(), r.tag)}</div></div>` : ""}
+      <div class="fl"><span>${T.d.cat}</span><div class="rowf" id="ed-tags">${catChips(tagList(), r.tag)}${newCatButton("chipsel")}</div></div>
       <div class="swrow"><div>${T.urgent}<small>${T.d.urgentSub}</small></div><button type="button" class="tog" role="switch" id="ed-urgent" aria-checked="${r.urgent}" aria-label="${T.urgent}"></button></div>
       ${devs ? `<div class="fl"><span>${T.d.where}</span><div class="rowf" id="ed-devs"><button type="button" class="chipsel" data-dev="" aria-pressed="${!r.only_on.length}">${T.d.everyPc}</button>${S.devices.map((d) => `<button type="button" class="chipsel" data-dev="${esc(d.uid)}" aria-pressed="${r.only_on.includes(d.uid)}">${esc(d.name)}${d.me ? T.d.thisPc : ""}</button>`).join("")}</div></div>` : ""}
       ${note ? `<div class="fl"><span>${T.d.note}</span><button type="button" class="field linkn" data-open-note="${note.id}">${I("notebook-pen", "s16")}<span>${esc(note.title || T.blankNote)}</span></button></div>` : ""}
@@ -749,7 +812,8 @@ function openEditor(r: Reminder, o: { draft?: (r: Reminder) => void; afterSave?:
     $("#ed-rep-t").textContent = now && isRecurring(now) ? repeatLabel(now, due) : now ? T.d.noRepeat : T.d.pickDays;
   };
   const showWhen = () => {
-    pv.textContent = understood ? `→ ${fullWhen(due)}` : T.d.notUnderstood;
+    // 空着就是待办：输入框里的提示已经写了，右边不再写
+    pv.textContent = !understood ? T.d.notUnderstood : undated ? "" : allday ? T.d.dayPv(remWhen({ due_at: due, snoozed_until: null, allday })) : `→ ${fullWhen(due)}`;
     pv.classList.toggle("bad", !understood);
     $("#ed-whenbox").classList.toggle("err", !understood);
     $("#ed-guess").textContent = understood && guess ? guess : r.vague && !dirty ? T.d.vagueNow : "";
@@ -772,10 +836,18 @@ function openEditor(r: Reminder, o: { draft?: (r: Reminder) => void; afterSave?:
   // 打一句话：本地规则理解成几点，右边马上写出来；说了「每周三」这类的，重复也跟着换
   when.addEventListener("input", () => {
     dirty = true;
-    const it = parseLocal(when.value, new Date(), S.devices).find((x) => x.type === "reminder");
-    understood = it?.type === "reminder";
-    if (it?.type === "reminder") {
+    // 空着就是待办
+    undated = !when.value.trim();
+    const it = undated ? undefined : parseLocal(when.value, new Date(), S.devices).find(hasTime);
+    understood = undated || it?.type === "reminder";
+    if (undated) {
+      due = NO_DATE;
+      allday = false;
+      guess = "";
+    } else if (it?.type === "reminder") {
       due = it.due;
+      // 「什么时候」里只写了日期，就是只有日期的（这里写「提醒」也算，在这一栏里本来就是说提醒的时间）
+      allday = !isRecurring(it.repeat) && !it.guess && !/\d\s*[:：点时]|[点时]\s*$|早|晚|上午|中午|下午|凌晨|傍晚|夜|分钟|小时|钟头|一会|待会|等会/.test(when.value);
       guess = it.guess;
       if (isRecurring(it.repeat)) {
         repBox.innerHTML = repeatBoxHtml(it.repeat, due);
@@ -788,18 +860,22 @@ function openEditor(r: Reminder, o: { draft?: (r: Reminder) => void; afterSave?:
   $("#ed-pick").onclick = () => {
     const dt = $("#ed-dt");
     dt.hidden = !dt.hidden;
-    $<HTMLInputElement>("#ed-date").value = due.slice(0, 10);
-    $<HTMLInputElement>("#ed-time").value = due.slice(11, 16);
+    const base = undated ? nextHour() : due;
+    $<HTMLInputElement>("#ed-date").value = base.slice(0, 10);
+    $<HTMLInputElement>("#ed-time").value = allday ? "" : base.slice(11, 16);
   };
   const fromPicker = () => {
     const d = $<HTMLInputElement>("#ed-date").value;
     const t = $<HTMLInputElement>("#ed-time").value;
-    if (!d || !t) return;
-    due = `${d} ${t}`;
+    if (!d) return;
+    // 只选了日期、没选时间：只有日期的
+    allday = !t;
+    undated = false;
+    due = `${d} ${t || "09:00"}`;
     dirty = true;
     understood = true;
     guess = "";
-    when.value = whenText(due);
+    when.value = whenText(due, new Date(), allday);
     showWhen();
   };
   $("#ed-date").onchange = fromPicker;
@@ -820,6 +896,8 @@ function openEditor(r: Reminder, o: { draft?: (r: Reminder) => void; afterSave?:
     }
     const tg = el.closest<HTMLElement>("#ed-tags [data-tag]");
     if (tg) return pickOne($("#ed-tags"), tg);
+    const nc = el.closest<HTMLElement>("#ed-tags [data-newcat]");
+    if (nc) return newCatChip($("#ed-tags"), nc, "tags");
     const dev = el.closest<HTMLElement>("[data-dev]");
     if (dev) {
       // 「每台都提醒」和具体哪几台只能选一边
@@ -853,6 +931,7 @@ function openEditor(r: Reminder, o: { draft?: (r: Reminder) => void; afterSave?:
     if (!understood) return void (err.textContent = T.d.needWhen);
     const repeat = readRepeat(repBox);
     if (!repeat) return void (err.textContent = T.d.needDays);
+    if (undated && isRecurring(repeat)) return void (err.textContent = T.d.needWhenRepeat);
     const tagEl = $$("#ed-tags [data-tag]").find((c) => c.getAttribute("aria-pressed") === "true");
     const out: Reminder = {
       ...r,
@@ -861,6 +940,8 @@ function openEditor(r: Reminder, o: { draft?: (r: Reminder) => void; afterSave?:
       due_at: due,
       // 改过时间就不算含糊了；新打的话又说得含糊，就还是含糊
       vague: dirty ? !!guess : r.vague && due === r.due_at,
+      // 周期的都到点弹
+      allday: allday && !isRecurring(repeat),
       repeat,
       tag: (tagEl?.dataset.tag as Tag) ?? null,
       urgent: $("#ed-urgent").getAttribute("aria-checked") === "true",
@@ -876,7 +957,7 @@ function openEditor(r: Reminder, o: { draft?: (r: Reminder) => void; afterSave?:
       const saved = await api.saveReminder(out);
       hideDrawer();
       o.afterSave?.();
-      say(T.savedRem(fullWhen(fireAt(saved))));
+      say(savedSay(saved));
     } catch (ex) {
       err.textContent = errText(ex);
     }
@@ -891,7 +972,7 @@ function openNoteDraft(it: Extract<ParsedItem, { type: "note" }>, done: (n: Extr
     <div class="db">
       <label class="fl"><span>${T.d.title}</span><input class="field big" id="nd-title" value="${esc(it.title)}"></label>
       <label class="fl"><span>${T.d.body}</span><textarea class="field" id="nd-body" rows="10">${esc(it.body)}</textarea></label>
-      ${noteCatList().length ? `<div class="fl"><span>${T.d.cat}</span><div class="rowf" id="nd-tags">${catChips(noteCatList(), it.tag)}</div></div>` : ""}
+      <div class="fl"><span>${T.d.cat}</span><div class="rowf" id="nd-tags">${catChips(noteCatList(), it.tag)}${newCatButton("chipsel")}</div></div>
     </div>
     <div class="df"><span class="sp"></span><button type="button" class="btn" data-dclose>${T.cancel}</button><button type="submit" class="btn pri">${T.d.done}</button></div>`);
   drawer.onclick = (e) => {
@@ -899,6 +980,8 @@ function openNoteDraft(it: Extract<ParsedItem, { type: "note" }>, done: (n: Extr
     if (el.closest("[data-dclose]")) return hideDrawer();
     const tg = el.closest<HTMLElement>("#nd-tags [data-tag]");
     if (tg) pickOne($("#nd-tags"), tg);
+    const nc = el.closest<HTMLElement>("#nd-tags [data-newcat]");
+    if (nc) newCatChip($("#nd-tags"), nc, "note_cats");
   };
   drawer.onsubmit = (e) => {
     e.preventDefault();
@@ -978,8 +1061,8 @@ function snoozeTo(btn: HTMLElement, id: number) {
   const go = $<HTMLButtonElement>("#snz-go");
   let at: Date | null = null;
   inp.oninput = () => {
-    const it = parseLocal(inp.value, new Date(), S.devices).find((x) => x.type === "reminder");
-    const d = it?.type === "reminder" ? parseDT(it.due) : null;
+    const it = parseLocal(inp.value, new Date(), S.devices).find(hasTime);
+    const d = it ? parseDT(it.due) : null;
     at = d && d > new Date() ? d : null;
     $("#snz-pv").textContent = !inp.value.trim() ? "" : at ? `→ ${fullWhen(fmtDT(at))}` : d ? T.snoozePast : T.d.notUnderstood;
     go.disabled = !at;
@@ -1051,6 +1134,7 @@ $("#main").addEventListener("click", async (e) => {
   const on = el.closest<HTMLElement>("[data-open-note]");
   if (on) return openNote(Number(on.dataset.openNote));
   if (el.closest("[data-newnote]")) newNoteHere();
+  if (el.closest("[data-goundated]")) showUndated();
 });
 
 // ---------- 提醒页 ----------
@@ -1079,6 +1163,12 @@ function renderReminders() {
       if (rows.length) html += grp(title, rows.map((r) => remRow(r, { done: true })).join(""), { n: rows.length });
     }
     if (!html) html = emptyHtml("normal", T.noDone, T.noDoneSub, "rem-done");
+  } else if (S.rMode === "undated") {
+    // 待办：没定时间的提醒（先记的在前），再是笔记里没勾掉的 - [ ]（按分类看时不放，笔记没有提醒分类）
+    const list = todo.filter(isUndated).sort((a, b) => a.created_at.localeCompare(b.created_at));
+    if (list.length) html += grp(T.ui.rmUndated, list.map((r) => remRow(r)).join(""), { n: list.length });
+    if (!S.rTag) html += noteTodosHtml();
+    if (!html) html = S.rTag ? emptyHtml("normal", T.noRemInTag, "", "rem-tag") : emptyHtml("happy", T.noUndated, T.noUndatedSub, "undated");
   } else if (S.rMode === "cycle") {
     const list = todo.filter((r) => isRecurring(r.repeat)).sort(byFire);
     const kinds: [string, RepeatKind[]][] = [
@@ -1096,13 +1186,13 @@ function renderReminders() {
     // 按时间分组：过点了、今天、明天、这周、以后（周期的按下一次）
     const day = (n: number) => dayStr(addDays(now, n));
     const buckets: [string, (r: Reminder) => boolean, boolean][] = [
-      [T.late, (r) => (parseDT(fireAt(r)) ?? now) < now, true],
+      [T.late, (r) => isLate(r, now), true],
       [T.today, (r) => fireAt(r).slice(0, 10) === day(0), false],
       [T.tomorrow, (r) => fireAt(r).slice(0, 10) === day(1), false],
       [T.thisWeek, (r) => fireAt(r).slice(0, 10) > day(1) && fireAt(r).slice(0, 10) < day(7), false],
       [T.later2, (r) => fireAt(r).slice(0, 10) >= day(7), false],
     ];
-    let rest = [...todo].sort(byFire);
+    let rest = todo.filter((r) => !isUndated(r)).sort(byFire);
     for (const [title, test, late] of buckets) {
       const rows = rest.filter(test);
       rest = rest.filter((r) => !test(r));
@@ -1138,7 +1228,6 @@ $(".sbar").addEventListener("click", (e) => {
   const nav = el.closest<HTMLElement>(".nv[data-view]");
   if (!nav) return;
   if (nav.dataset.view === "reminders") S.rTag = null;
-  if (nav.dataset.view === "notes" && S.view !== "notes") S.todoView = false;
   go(nav.dataset.view as View);
 });
 
@@ -1178,7 +1267,6 @@ function newNoteHere() {
   if (S.editing) finishEdit();
   S.q = "";
   $<HTMLInputElement>("#nb-search").value = "";
-  S.todoView = false;
   const cat = S.nCat !== "all" && S.nCat !== "none" ? S.nCat : null;
   freshNote = newNote({ tag: cat });
   go("notes");
@@ -1203,7 +1291,7 @@ function renderNotes() {
   const q = S.q.trim();
   const ql = q.toLowerCase();
   const list = filteredNotes();
-  if (!S.todoView) $("#nb-count").textContent = q ? T.found(list.length) : S.notes.length ? T.notesN(S.notes.length) : "";
+  $("#nb-count").textContent = q ? T.found(list.length) : S.notes.length ? T.notesN(S.notes.length) : "";
   if (!freshNote && !(S.editing && edNote?.id === S.noteId) && list.length && !list.some((n) => n.id === S.noteId)) S.noteId = list[0].id;
   $("#nb-items").innerHTML = list.length
     ? list
@@ -1222,7 +1310,7 @@ function renderNotes() {
         ? `<p class="none">${T.catEmpty}</p>`
         : emptyHtml("normal", T.nbEmpty, T.nbEmptySub(S.settings?.hk_qnote ? hotkeyText(S.settings.hk_qnote) : ""), "nb-empty");
   // 右边：只在看着笔记本时才放编辑器
-  if (S.view === "notes" && !S.todoView) {
+  if (S.view === "notes") {
     if (S.editing) syncOpenNote();
     else renderNoteDoc();
   }
@@ -1304,7 +1392,8 @@ function todoExtra(n: Note) {
 /** 只看：排好版的样子，能勾待办、设提醒、点链接、切表格的看法、复制；双击、点「编辑」、按回车进编辑 */
 function mountView(n: Note) {
   const doc = $("#nb-doc");
-  const keep = doc.dataset.view === String(n.id) ? doc.scrollTop : 0;
+  const switched = doc.dataset.view !== String(n.id);
+  const keep = switched ? 0 : doc.scrollTop;
   noteEd?.destroy();
   noteEd = null;
   S.editing = false;
@@ -1316,7 +1405,11 @@ function mountView(n: Note) {
   lightTools = () => {};
   doc.dataset.uid = n.uid;
   doc.dataset.view = String(n.id);
-  const q = S.q.trim();
+  const mine = jump?.id === n.id ? jump : null;
+  const q = S.q.trim() || mine?.q || "";
+  // 换到另一篇、或者刚从搜索点进来：滚到正文里第一处搜到的（只在标题里搜到的就停在最上面）
+  const seek = !!q && (switched || (mine !== null && !mine.done));
+  if (mine) mine.done = true;
   doc.innerHTML = `
     <div class="ed-bar view" id="ne-bar"><span class="sp"></span><span class="saved" id="ne-state"></span><button class="btn sm" id="ne-tidy" data-nact="tidy">${I("sparkles")}${TN.aiButton}</button><button class="btn sm pri" data-nact="edit" title="${TN.editTip}">${I("pencil")}${TN.edit}</button><button class="btn sm ghost icon" data-nact="more" title="${TN.more}" aria-label="${TN.more}">${I("ellipsis")}</button></div>
     <div class="ntitle rd" data-ln="-1" title="${TN.editTip}">${highlight(esc(n.title || T.blankNote), q)}</div>
@@ -1325,6 +1418,7 @@ function mountView(n: Note) {
   tidyReady();
   drawMeta();
   doc.scrollTop = keep;
+  if (seek) requestAnimationFrame(() => doc.querySelector("#ne-view mark")?.scrollIntoView({ block: "center" }));
 }
 
 /** 进编辑：at 是双击的那一行（-1 是标题） */
@@ -1410,18 +1504,10 @@ function setTodoReminder(n: Note, line: number) {
 }
 
 /** 待办：所有笔记里没勾掉的 - [ ]，按笔记分组。方形的勾（它属于笔记），和提醒的圆形完成勾分开 */
-function renderTodos() {
+/** 提醒页「待办」下面：笔记里没勾掉的 - [ ]，一篇笔记一组（以前在笔记本里单独一页，需求-1.x 第 40 节） */
+function noteTodosHtml() {
   const groups = S.notes.map((n) => ({ n, list: todos(n.body).filter((t) => !t.done) })).filter((g) => g.list.length);
-  const total = groups.reduce((a, g) => a + g.list.length, 0);
-  $("#nb-todo-btn").textContent = total ? T.todosN(total) : T.ui.todos;
-  $$("#nb-mode [data-mode]").forEach((b) => b.setAttribute("aria-pressed", String((b.dataset.mode === "todos") === S.todoView)));
-  $("#nbk").hidden = S.todoView;
-  const box = $("#nb-todos");
-  box.hidden = !S.todoView;
-  if (!S.todoView) return;
-  $("#nb-count").textContent = total ? T.todosLeft(total) : "";
-  box.innerHTML = groups.length
-    ? groups
+  return groups
         .map(
           ({ n, list }) => `<div class="grp"><h5><button class="lnk" data-open-note="${n.id}">${I("file-text")}${esc(n.title || T.blankNote)}</button></h5>
           ${list
@@ -1435,21 +1521,15 @@ function renderTodos() {
             })
             .join("")}</div>`,
         )
-        .join("")
-    : emptyHtml("happy", T.noTodos(mascotOn()), T.noTodosSub, "todos");
+        .join("");
 }
 
-/** 笔记本里切换「笔记 / 待办」 */
-function showTodos(on: boolean) {
-  if (S.editing) finishEdit();
-  S.todoView = on;
-  go("notes");
+/** 到提醒页的「待办」 */
+function showUndated() {
+  S.rMode = "undated";
+  S.rTag = null;
+  go("reminders");
 }
-
-$("#nb-mode").addEventListener("click", (e) => {
-  const b = (e.target as HTMLElement).closest<HTMLElement>("[data-mode]");
-  if (b) showTodos(b.dataset.mode === "todos");
-});
 
 /** 笔记正文和待办页里：勾选框、设提醒、改提醒 */
 async function todoClick(e: Event) {
@@ -1473,7 +1553,7 @@ async function todoClick(e: Event) {
   } else return;
   e.stopPropagation();
 }
-$("#nb-todos").addEventListener("click", todoClick);
+$("#rem-groups").addEventListener("click", todoClick);
 // 只看的那种（开着单独窗口时）里的表格
 $("#nb-doc").addEventListener("input", (e) => {
   const ctx = !S.editing && noteTableCtx();
@@ -1503,12 +1583,13 @@ $("#nb-doc").addEventListener("keydown", (e) => {
   }
 });
 
-function openNote(id: number) {
+/** find：从搜索点进来的，正文里标出这几个字、滚到第一处（这时用「只看」的样子打开，正在改这篇也先存好换过来） */
+function openNote(id: number, find = "") {
   if (S.editing) finishEdit();
-  if (id !== S.noteId) editNoteId = null;
+  if (id !== S.noteId || find.trim()) editNoteId = null;
+  jump = find.trim() ? { id, q: find.trim(), done: false } : null;
   S.noteId = id;
   freshNote = null;
-  S.todoView = false;
   S.q = "";
   $<HTMLInputElement>("#nb-search").value = "";
   go("notes");
@@ -1529,6 +1610,7 @@ $("#nb-items").addEventListener("click", (e) => {
   if (id === S.noteId && !freshNote && S.editing) return;
   if (S.editing) finishEdit();
   if (id !== S.noteId) editNoteId = null;
+  if (jump?.id !== id) jump = null;
   S.noteId = id;
   freshNote = null;
   renderNotes();
@@ -1555,6 +1637,8 @@ let freshNote: Note | null = null;
 let editNoteId: number | null = null;
 /** 进编辑时光标放在哪（双击的那一行、那个词；-1 是标题） */
 let editAt: { line: number; word?: string } | null = null;
+/** 从搜索打开的笔记：正文里标出搜的字，第一次画出来时滚到第一处（done 了就只标不滚）；点了别的笔记就不要了 */
+let jump: { id: number; q: string; done: boolean } | null = null;
 /** 上次存进去的：数据变了时拿它判断是不是别处改的、这里有没有没存的修改 */
 let savedBody = "";
 let savedTitle = "";
@@ -1633,9 +1717,8 @@ function drawMeta() {
   const cat = noteCatDef(edTag);
   const linked = n.reminder_id ? S.reminders.find((r) => r.id === n.reminder_id) : undefined;
   box.innerHTML = [
-    noteCatList().length || cat
-      ? `<button type="button" class="${cat ? "tag" : "tag nocat"}" data-nact="cat" style="${cat ? tagColor(cat.color) : ""}" title="${TN.catTip}" aria-haspopup="menu">${cat ? esc(cat.name) : `${I("plus")}${TN.noCat}`}</button>`
-      : "",
+    // 没有笔记分类时也放：菜单里能直接加一个
+    `<button type="button" class="${cat ? "tag" : "tag nocat"}" data-nact="cat" style="${cat ? tagColor(cat.color) : ""}" title="${TN.catTip}" aria-haspopup="menu">${cat ? esc(cat.name) : `${I("plus")}${TN.noCat}`}</button>`,
     n.id ? `<span>${esc(TN.edited(ago(n.updated_at)))}</span>` : "",
     n.pinned_at ? `<span>${I("pin")}${T.pinned}</span>` : "",
     linked ? `<button type="button" class="lnk" data-nact="rem" title="${T.editRem}">${I("bell")}${esc(TN.linked(`${whenShort(fireAt(linked))} ${linked.title}`))}</button>` : "",
@@ -1837,7 +1920,7 @@ async function todoToggled(text: string, done: boolean) {
 /** 选中的文字设成提醒：走随手记的理解（时间、周期、紧急），关联这条笔记 */
 async function remindText(text: string, anchor: HTMLElement) {
   if (!text) return;
-  const parsed = parseLocal(text, new Date(), S.devices).find((i) => i.type === "reminder");
+  const parsed = parseLocal(text, new Date(), S.devices).find(hasTime);
   const title = parsed?.type === "reminder" && parsed.title && text.includes(parsed.title) ? parsed.title : text;
   const res = await askRemind({ anchor, title, phrase: parsed ? text : "" });
   if (!res || res === "delete") return;
@@ -1910,17 +1993,30 @@ async function tidyNote(btn: HTMLButtonElement) {
 /** 笔记分类：一个小菜单 */
 function catMenu(btn: HTMLElement) {
   const list = noteCatList();
-  menu.innerHTML = list.length
-    ? `<button class="mi" data-cat="">${TN.catNone}</button>${list.map((c) => `<button class="mi" data-cat="${esc(c.id)}"><span class="tag" style="${tagColor(c.color)}">${esc(c.name)}</span>${c.id === edTag ? I("check") : ""}</button>`).join("")}`
-    : `<div class="mi">${TN.catEmpty}</div>`;
+  menu.innerHTML = `<button class="mi" data-cat="">${TN.catNone}</button>${list.map((c) => `<button class="mi" data-cat="${esc(c.id)}"><span class="tag" style="${tagColor(c.color)}">${esc(c.name)}</span>${c.id === edTag ? I("check") : ""}</button>`).join("")}${newCatButton("mi")}`;
   placeMenu(btn);
-  menu.onclick = (e) => {
-    const mi = (e.target as HTMLElement).closest<HTMLElement>("[data-cat]");
-    if (!mi) return;
+  const pick = (id: string | null) => {
     closeMenu();
-    edTag = mi.dataset.cat || null;
+    edTag = id;
     drawMeta();
     touch();
+  };
+  menu.onclick = (e) => {
+    const el = e.target as HTMLElement;
+    const nc = el.closest<HTMLElement>("[data-newcat]");
+    // 加一个笔记分类，加好就用上
+    if (nc)
+      return openCatInput(
+        nc,
+        "note_cats",
+        (t) => {
+          setNoteCats([...noteCatList().filter((x) => x.id !== t.id), t]);
+          pick(t.id);
+        },
+        (msg) => say(msg),
+      );
+    const mi = el.closest<HTMLElement>("[data-cat]");
+    if (mi) pick(mi.dataset.cat || null);
   };
 }
 
@@ -2137,7 +2233,7 @@ function paintHits() {
 function openHit(h: Hit | undefined) {
   if (!h) return;
   closeSearch();
-  if (h.kind === "note") openNote(h.n.id);
+  if (h.kind === "note") openNote(h.n.id, palIn.value);
   else {
     go("reminders");
     openEditor(structuredClone(h.r));
@@ -2328,10 +2424,7 @@ function go(view: View) {
   $$(".pg:not([hidden]) .vb").forEach((s) => (s.scrollTop = 0));
   if (view === "settings") void renderSettings();
   if (view === "reminders") renderReminders();
-  if (view === "notes") {
-    renderTodos();
-    if (!S.todoView) renderNotes();
-  }
+  if (view === "notes") renderNotes();
   renderCounts();
 }
 
@@ -2349,13 +2442,12 @@ function applyNav(nav: Nav) {
   if (r) {
     go("reminders");
     openEditor(structuredClone(r));
-  } else if (nav.noteId) openNote(nav.noteId);
+  } else if (nav.noteId) openNote(nav.noteId, nav.find ?? "");
   else {
     // 桌面组件里点「还有 N 条」：笔记本按分类筛好；点「组件设置」：直接到那一页
     if (nav.view === "notes" && nav.sub) S.nCat = nav.sub;
     if (nav.view === "settings") return openSettings(nav.sub, nav.row);
-    if (nav.view === "todos") return showTodos(true);
-    if (nav.view === "notes") S.todoView = false;
+    if (nav.view === "todos") return showUndated();
     go((["today", "reminders", "notes", "settings", "trash"].includes(nav.view) ? nav.view : "today") as View);
   }
 }
@@ -2367,6 +2459,8 @@ document.addEventListener(
     if (await recordKey(e)) return;
     const inEditor = !!(e.target as HTMLElement).closest?.(".cm-editor, .tg-wrap");
     if (e.key === "Escape") {
+      // 正在打新分类的名字：Esc 只是不加了（输入框自己管）
+      if ((e.target as HTMLElement).closest?.(".catin")) return;
       if (!menu.hidden) return closeMenu();
       if (!$("#dlg").hidden) return void ($("#dlg").hidden = true);
       if (!pal.hidden) return closeSearch();
@@ -2390,7 +2484,6 @@ document.addEventListener(
       e.preventDefault();
       // 在设置里：搜设置
       if (S.view === "settings") return focusSettingsSearch();
-      S.todoView = false;
       go("notes");
       $<HTMLInputElement>("#nb-search").focus();
     }
@@ -2461,7 +2554,7 @@ $("#modal").addEventListener("mousedown", (e) => {
   // 单独的笔记窗口开了、关了：正在这里改同一条的先收起来
   const noteWins = (ids: number[]) => {
     S.noteWins = new Set(ids);
-    if (S.view !== "notes" || S.todoView) return;
+    if (S.view !== "notes") return;
     if (!S.editing || (edNote?.id && S.noteWins.has(edNote.id))) renderNoteDoc();
   };
   listen<number[]>("note-windows", (e) => noteWins(e.payload));

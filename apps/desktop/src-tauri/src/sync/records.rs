@@ -37,6 +37,9 @@ pub struct SReminder {
     /// 说得含糊、时间是先定的（0.2 加的，旧版传来的没有）
     #[serde(default)]
     pub vague: bool,
+    /// 只说了哪天、没说几点，不弹窗（1.0.9 加的，旧版传来的没有；旧版改过再传回来就没了，变回 9 点弹）
+    #[serde(default)]
+    pub allday: bool,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
@@ -220,7 +223,7 @@ fn collect(c: &Connection, filter: &str, att: &str, limit: usize) -> rusqlite::R
     let mut out = rows(
         c,
         &format!("SELECT uid,title,detail,tag,urgent,due_at,repeat,snoozed_until,done,snooze_count,last_done_at,completed_at,
-                only_on,created_at,updated_at,deleted_at,purged,ver,note_uid,todo,vague
+                only_on,created_at,updated_at,deleted_at,purged,ver,note_uid,todo,vague,allday
          FROM reminders WHERE {filter} LIMIT ?1"),
         limit,
         |r| {
@@ -251,6 +254,7 @@ fn collect(c: &Connection, filter: &str, att: &str, limit: usize) -> rusqlite::R
                     note_uid: r.get(18)?,
                     todo: r.get(19)?,
                     vague: opt_bool(r, 20)?,
+                    allday: opt_bool(r, 21)?,
                 }),
             })
         },
@@ -359,15 +363,15 @@ pub fn apply(c: &Connection, data_dir: &Path, ver: &str, p: &Payload) -> rusqlit
         Payload::Reminder(r) => c.execute(
             // 时间、完成、删除变了的话，本机正在弹的卡片收起来，按新的情况重新算
             "INSERT INTO reminders(uid,title,detail,tag,urgent,due_at,repeat,snoozed_until,done,state,snooze_count,
-                last_done_at,completed_at,only_on,created_at,updated_at,deleted_at,purged,ver,note_uid,todo,vague,dirty)
-             VALUES(?1,?2,?3,?4,?5,?6,?7,?8,?9,0,?10,?11,?12,?13,?14,?15,?16,?17,?18,?19,?20,?21,0)
+                last_done_at,completed_at,only_on,created_at,updated_at,deleted_at,purged,ver,note_uid,todo,vague,allday,dirty)
+             VALUES(?1,?2,?3,?4,?5,?6,?7,?8,?9,0,?10,?11,?12,?13,?14,?15,?16,?17,?18,?19,?20,?21,?22,0)
              ON CONFLICT(uid) DO UPDATE SET
                 title=excluded.title, detail=excluded.detail, tag=excluded.tag, urgent=excluded.urgent,
                 due_at=excluded.due_at, repeat=excluded.repeat, snoozed_until=excluded.snoozed_until, done=excluded.done,
                 snooze_count=excluded.snooze_count, last_done_at=excluded.last_done_at, completed_at=excluded.completed_at,
                 only_on=excluded.only_on, created_at=excluded.created_at, updated_at=excluded.updated_at,
                 deleted_at=excluded.deleted_at, purged=excluded.purged, ver=excluded.ver, dirty=0,
-                note_uid=excluded.note_uid, todo=excluded.todo, vague=excluded.vague,
+                note_uid=excluded.note_uid, todo=excluded.todo, vague=excluded.vague, allday=excluded.allday,
                 state=CASE WHEN excluded.done != reminders.done
                              OR excluded.deleted_at IS NOT reminders.deleted_at
                              OR COALESCE(excluded.snoozed_until, excluded.due_at) != COALESCE(reminders.snoozed_until, reminders.due_at)
@@ -394,7 +398,8 @@ pub fn apply(c: &Connection, data_dir: &Path, ver: &str, p: &Payload) -> rusqlit
                 ver,
                 r.note_uid,
                 r.todo,
-                r.vague as i64
+                r.vague as i64,
+                r.allday as i64
             ],
         )?,
         Payload::Note(n) => {
@@ -608,7 +613,22 @@ mod tests {
         )
         .unwrap();
         assert!(!old.vague);
+        assert!(!old.allday);
         assert_eq!((old.repeat.month, old.repeat.nth), (0, 0));
+    }
+
+    #[test]
+    fn todo_and_allday_sync() {
+        let (da, db_) = (temp("a"), temp("b"));
+        let a = db::open(&da).unwrap();
+        let b = db::open(&db_).unwrap();
+        upsert_reminder(&a, &Reminder { title: "整理资料".into(), due_at: db::NO_DATE.into(), ..Default::default() }).unwrap();
+        upsert_reminder(&a, &Reminder { title: "交报告".into(), due_at: "2099-01-02 09:00".into(), allday: true, ..Default::default() }).unwrap();
+        assert_eq!(sync(&a, &b, &db_), 2);
+        let got = list_reminders(&b).unwrap();
+        let by = |t: &str| got.iter().find(|r| r.title == t).unwrap();
+        assert!(db::is_undated(&by("整理资料").due_at));
+        assert!(by("交报告").allday && !by("整理资料").allday);
     }
 
     #[test]
@@ -659,6 +679,7 @@ mod tests {
             note_uid: None,
             todo: None,
             vague: false,
+            allday: false,
         });
         assert!(!apply(&a, &da, "0000000000001-0000-old", &old).unwrap());
         assert_eq!(get_reminder(&a, rid).unwrap().unwrap().title, "交报销（带发票）");

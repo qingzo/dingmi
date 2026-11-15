@@ -1,7 +1,7 @@
 // 一句话直接保存：快捷框和桌面组件共用。一边打字一边预览会被理解成什么，回车后由 AI（或本地规则）拆开存好
 import { api, type Device, type Note, type Reminder } from "./api";
 import { guessNoteCat, parseLocal, saveParsed, smartParse, type ParsedItem, type ParsedNote } from "./parse";
-import { friendlyDT, isRecurring, repeatLabel } from "@shared/util";
+import { friendlyDay, friendlyDT, isRecurring, NO_DATE, repeatLabel } from "@shared/util";
 
 /** 本地规则先猜一下：会不会记成提醒（几点、怎么重复、只在哪台电脑）、顺不顺便记笔记 */
 export function guess(v: string, devices: Device[]) {
@@ -10,7 +10,8 @@ export function guess(v: string, devices: Device[]) {
   const rem = r && r.type === "reminder" ? r : undefined;
   return {
     reminder: rem && {
-      when: friendlyDT(rem.due) + (isRecurring(rem.repeat) ? " · " + repeatLabel(rem.repeat, rem.due) : "") + (rem.urgent ? " · 紧急" : ""),
+      /** 待办写「待办」；只有日期的不写钟点 */
+      when: (rem.due === NO_DATE ? "待办" : rem.allday ? friendlyDay(rem.due) : friendlyDT(rem.due)) + (isRecurring(rem.repeat) ? " · " + repeatLabel(rem.repeat, rem.due) : "") + (rem.urgent ? " · 紧急" : ""),
       title: rem.title,
       /** 说得含糊时先定的时间怎么来的（接着补一句时间，这里马上就变） */
       guess: rem.guess,

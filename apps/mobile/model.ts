@@ -28,6 +28,8 @@ export interface SReminder {
   todo?: string | null;
   /** 一句话说得含糊、时间是先定的（0.2 加的，旧记录没有） */
   vague?: boolean;
+  /** 只说了哪天、没说几点：那天在「今天」里，电脑上不弹窗（1.0.9 加的，旧记录没有） */
+  allday?: boolean;
 }
 
 export interface SNote {
@@ -123,6 +125,8 @@ export function parseDT(s: string | null | undefined): Date | null {
 }
 
 export const fireAt = (r: SReminder) => r.snoozed_until ?? r.due_at;
+/** 待办（没定时间的提醒）：时间存成这个，和电脑端一样（需求-1.x 第 40 节） */
+export { isUndated, NO_DATE } from "@shared/util";
 export { isRecurring };
 
 // ---------- 周期提醒（和 recur.rs 一样，代码在 shared/recur.ts） ----------

@@ -97,24 +97,24 @@ export function recent(items: LaunchItem[], stats: LaunchStats, n = 8): LaunchIt
 }
 
 /**
- * 输入框空着时显示的那一行：放在「常用」里的在前（和桌面组件共用），再是最近用过的；
+ * 输入框空着时显示的两块：pins 是放在「常用」里的（和桌面组件共用，全放）；recent 是最近用过的 n 个，常用里有的不重复；
  * 不够的按用得多少补满（刚开始用时就是 Windows 记的最常用的）；一样多的桌面上的、自己加的在前，Windows 文件夹里的系统工具最后，叮咪自己不算
  */
-export function firstRow(items: LaunchItem[], cfg: LaunchConfig, stats: LaunchStats, n = 8): LaunchItem[] {
+export function emptyRows(items: LaunchItem[], cfg: LaunchConfig, stats: LaunchStats, n = 8): { pins: LaunchItem[]; recent: LaunchItem[] } {
   const byId = new Map(items.map((i) => [i.id, i]));
+  const pins = [...new Set(cfg.pins.map((id) => byId.get(id)).filter((it): it is LaunchItem => !!it && !it.missing))];
   const out: LaunchItem[] = [];
   const add = (it?: LaunchItem) => {
-    if (it && !it.missing && out.length < n && !out.includes(it)) out.push(it);
+    if (it && !it.missing && out.length < n && !out.includes(it) && !pins.includes(it)) out.push(it);
   };
-  cfg.pins.forEach((id) => add(byId.get(id)));
-  recent(items, stats, n).forEach(add);
+  recent(items, stats, n + pins.length).forEach(add);
   const order = (i: LaunchItem) =>
     i.id.startsWith("desk:") ? 0 : /^(path|url):/.test(i.id) ? 1 : i.kind === "store" || !/^(c:\\windows|::)/i.test(i.path) ? 2 : 3;
   items
     .filter((i) => i.name !== "叮咪")
     .sort((a, b) => used(b, stats) - used(a, stats) || order(a) - order(b) || a.name.localeCompare(b.name, "zh"))
     .forEach(add);
-  return out;
+  return { pins, recent: out };
 }
 
 /** 名字里的这几个字标出来 */

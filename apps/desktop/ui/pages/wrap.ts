@@ -7,7 +7,7 @@ import { api, errText, type Reminder } from "../lib/api";
 import { icon } from "@shared/icons";
 import { cat } from "@shared/mascot";
 import { $, dayStr, esc, fireAt, fmtDT, isRecurring, parseDT, timeOf } from "@shared/util";
-import { dateLine, remindText as R, whenPast, wrapText as T } from "../text/cards";
+import { dateLine, morningText as M, remindText as R, whenPast, wrapText as T } from "../text/cards";
 
 // 每天收尾（U5）：今天做完了什么、还剩什么，剩下的挪到明天或者顺手做掉。只看今天，不做总结。团子猫打哈欠。
 // 在一台电脑上收尾后，别的电脑当天不再弹；正开着的卡片收到同步过来的"已收尾"也会自己关掉。
@@ -50,9 +50,9 @@ async function render() {
     groups.push(`<div class="grp"><h5>${icon("circle-dashed")}${T.left} <span class="n">${T.count(left.length)}</span></h5><div class="mini scroll">${left
       .map((r) => {
         const f = fireAt(r);
-        const late = f.slice(0, 10) < tk || (parseDT(f)?.getTime() ?? 0) < now.getTime();
+        const late = f.slice(0, 10) < tk || (!r.allday && (parseDT(f)?.getTime() ?? 0) < now.getTime());
         return `<div class="it"><button class="task" data-done="${r.id}" aria-label="${R.done}">${icon("check")}</button>
-          <span class="t">${esc(r.title)}</span><span class="tm${late ? " late" : ""}">${f.slice(0, 10) < tk ? whenPast(parseDT(f) ?? now) : timeOf(f)}</span>
+          <span class="t">${esc(r.title)}</span><span class="tm${late ? " late" : ""}">${f.slice(0, 10) < tk ? whenPast(parseDT(f) ?? now) : r.allday ? M.allDay : timeOf(f)}</span>
           <span class="acts2"><button class="btn sm" data-tmr="${r.id}">${T.moveTmr}</button></span></div>`;
       })
       .join("")}</div></div>`);

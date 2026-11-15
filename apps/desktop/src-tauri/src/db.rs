@@ -12,6 +12,13 @@ use uuid::Uuid;
 
 pub const FMT: &str = "%Y-%m-%d %H:%M";
 
+/// 待办（没定时间的提醒）存的时间：旧版本按字符串比大小判断到点，存这个永远不会到点（需求-1.x 第 40 节）
+pub const NO_DATE: &str = "9999-12-31 23:59";
+
+pub fn is_undated(due_at: &str) -> bool {
+    due_at.starts_with("9999-")
+}
+
 pub fn now_min() -> String {
     Local::now().format(FMT).to_string()
 }
@@ -85,6 +92,8 @@ pub struct Reminder {
     pub todo: Option<String>,
     /// 一句话说得含糊（"改天""过几天"），时间是先定的；改过时间后变回 false
     pub vague: bool,
+    /// 只说了哪天、没说几点：那天出现在「今天」里，不弹窗。时间照旧存那天 09:00（旧版本照旧 9 点弹）
+    pub allday: bool,
 }
 
 impl Reminder {
@@ -234,6 +243,8 @@ pub fn add_new_columns(conn: &Connection) -> rusqlite::Result<()> {
     add_column(conn, "reminders", "vague", "INTEGER NOT NULL DEFAULT 0")?;
     // 叮咪同步的套餐不传、原文件只在哪台设备上（1.0，需求-1.0 第 32.1 节第 5 条）
     add_column(conn, "attachments", "only_on", "TEXT")?;
+    // 只说了哪天、没说几点的提醒，不弹窗（需求-1.x 第 40 节）
+    add_column(conn, "reminders", "allday", "INTEGER NOT NULL DEFAULT 0")?;
     Ok(())
 }
 
@@ -287,7 +298,7 @@ pub fn device_id(c: &Connection) -> rusqlite::Result<String> {
     Ok(d)
 }
 
-const R_COLS: &str = "id,title,detail,tag,urgent,due_at,repeat,snoozed_until,done,state,snooze_count,last_done_at,completed_at,created_at,uid,only_on,updated_at,deleted_at,note_uid,todo,vague";
+const R_COLS: &str = "id,title,detail,tag,urgent,due_at,repeat,snoozed_until,done,state,snooze_count,last_done_at,completed_at,created_at,uid,only_on,updated_at,deleted_at,note_uid,todo,vague,allday";
 
 fn row_reminder(r: &Row) -> rusqlite::Result<Reminder> {
     let repeat: String = r.get(6)?;
@@ -314,6 +325,7 @@ fn row_reminder(r: &Row) -> rusqlite::Result<Reminder> {
         note_uid: r.get(18)?,
         todo: r.get(19)?,
         vague: r.get::<_, i64>(20)? != 0,
+        allday: r.get::<_, i64>(21)? != 0,
     })
 }
 
@@ -352,11 +364,11 @@ pub fn held(c: &Connection) -> rusqlite::Result<Vec<Reminder>> {
     )
 }
 
-/// 到点但还没处理的提醒：(id, urgent)。指定了设备的，只在那几台电脑上算到点。
+/// 到点但还没处理的提醒：(id, urgent)。指定了设备的，只在那几台电脑上算到点。只有日期的不弹（待办的时间永远不会到）
 pub fn due_now(c: &Connection, now: &str, device: &str) -> rusqlite::Result<Vec<(i64, bool)>> {
     let mut st = c.prepare(
         "SELECT id, urgent FROM reminders
-         WHERE done=0 AND state=0 AND deleted_at IS NULL AND COALESCE(snoozed_until, due_at) <= ?1
+         WHERE done=0 AND state=0 AND deleted_at IS NULL AND allday=0 AND COALESCE(snoozed_until, due_at) <= ?1
            AND (only_on='[]' OR EXISTS(SELECT 1 FROM json_each(only_on) WHERE value=?2))",
     )?;
     let rows = st.query_map(params![now, device], |r| Ok((r.get(0)?, r.get::<_, i64>(1)? != 0)))?;
@@ -394,7 +406,7 @@ pub fn upsert_reminder(c: &Connection, r: &Reminder) -> rusqlite::Result<i64> {
         c.execute(
             "UPDATE reminders SET title=?2, detail=?3, tag=?4, urgent=?5, due_at=?6, repeat=?7,
                 snoozed_until=?8, done=?9, state=?10, snooze_count=?11, last_done_at=?12, completed_at=?13,
-                only_on=?14, updated_at=?15, ver=?16, note_uid=?17, todo=?18, vague=?19, dirty=1
+                only_on=?14, updated_at=?15, ver=?16, note_uid=?17, todo=?18, vague=?19, allday=?20, dirty=1
              WHERE id=?1",
             params![
                 r.id,
@@ -415,7 +427,8 @@ pub fn upsert_reminder(c: &Connection, r: &Reminder) -> rusqlite::Result<i64> {
                 clock::next(),
                 r.note_uid,
                 r.todo,
-                r.vague as i64
+                r.vague as i64,
+                r.allday as i64
             ],
         )?;
         Ok(r.id)
@@ -423,8 +436,8 @@ pub fn upsert_reminder(c: &Connection, r: &Reminder) -> rusqlite::Result<i64> {
         let uid = if r.uid.is_empty() { new_uid() } else { r.uid.clone() };
         c.execute(
             "INSERT INTO reminders(title,detail,tag,urgent,due_at,repeat,snoozed_until,done,state,snooze_count,last_done_at,completed_at,
-                only_on,created_at,updated_at,uid,ver,note_uid,todo,vague,dirty)
-             VALUES(?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?14,?15,?16,?17,?18,?19,1)",
+                only_on,created_at,updated_at,uid,ver,note_uid,todo,vague,allday,dirty)
+             VALUES(?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?14,?15,?16,?17,?18,?19,?20,1)",
             params![
                 r.title,
                 r.detail,
@@ -444,7 +457,8 @@ pub fn upsert_reminder(c: &Connection, r: &Reminder) -> rusqlite::Result<i64> {
                 clock::next(),
                 r.note_uid,
                 r.todo,
-                r.vague as i64
+                r.vague as i64,
+                r.allday as i64
             ],
         )?;
         Ok(c.last_insert_rowid())
@@ -1000,11 +1014,11 @@ pub fn shared_init(c: &Connection, uid: &str, value: &str, ver: &str) -> rusqlit
 
 // ---------- 托盘提示、每天收尾 ----------
 
-/// 这台电脑上接下来要提醒的一条：(时间, 标题)
+/// 这台电脑上接下来要提醒的一条：(时间, 标题)。只有日期的、待办不弹，不算
 pub fn next_reminder(c: &Connection, now: &str, device: &str) -> Option<(String, String)> {
     c.query_row(
         "SELECT COALESCE(snoozed_until, due_at) AS f, title FROM reminders
-         WHERE done=0 AND deleted_at IS NULL AND f > ?1
+         WHERE done=0 AND deleted_at IS NULL AND allday=0 AND f > ?1 AND f < '9999'
            AND (only_on='[]' OR EXISTS(SELECT 1 FROM json_each(only_on) WHERE value=?2))
          ORDER BY f LIMIT 1",
         params![now, device],
@@ -1144,6 +1158,21 @@ mod tests {
 
     fn reminder(title: &str, due: &str) -> Reminder {
         Reminder { title: title.into(), due_at: due.into(), ..Default::default() }
+    }
+
+    #[test]
+    fn todo_and_allday_never_pop() {
+        let c = open(&temp_dir("todo")).unwrap();
+        upsert_reminder(&c, &reminder("整理资料", NO_DATE)).unwrap();
+        upsert_reminder(&c, &Reminder { allday: true, ..reminder("交报告", "2000-01-01 09:00") }).unwrap();
+        let pop = upsert_reminder(&c, &reminder("开会", "2000-01-01 09:00")).unwrap();
+        upsert_reminder(&c, &Reminder { allday: true, ..reminder("取快递", "2099-01-01 09:00") }).unwrap();
+        // 到点只弹写了钟点的；托盘的「下一条」也不算待办和只有日期的
+        let due: Vec<i64> = due_now(&c, "2500-01-01 00:00", "me").unwrap().into_iter().map(|x| x.0).collect();
+        assert_eq!(due, vec![pop]);
+        assert_eq!(next_reminder(&c, "2000-01-02 00:00", "me"), None);
+        // 只有日期的那天还算今天要做的
+        assert_eq!(today_summary(&c, "2000-01-01").1, 2);
     }
 
     #[test]

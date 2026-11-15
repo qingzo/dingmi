@@ -60,6 +60,17 @@ export function parseDT(s: string | null | undefined): Date | null {
 export const addDays = (d: Date, n: number) => new Date(d.getFullYear(), d.getMonth(), d.getDate() + n, d.getHours(), d.getMinutes());
 
 export const fireAt = (r: Reminder) => r.snoozed_until ?? r.due_at;
+/** 待办（没定时间的提醒）存的时间，和 db.rs 的 NO_DATE 一样：旧版本永远等不到它（需求-1.x 第 40 节） */
+export const NO_DATE = "9999-12-31 23:59";
+export const isUndated = (r: Pick<Reminder, "due_at">) => r.due_at.startsWith("9999-");
+/** 过点了没有：待办不会过点；只有日期的，那天过完才算 */
+export function isLate(r: Reminder, now = new Date()): boolean {
+  if (isUndated(r)) return false;
+  const f = fireAt(r);
+  if (r.allday) return f.slice(0, 10) < dayStr(now);
+  const d = parseDT(f);
+  return !!d && d < now;
+}
 export const timeOf = (s: string) => s.slice(11, 16);
 export const weekdayCn = (d: Date) => "周" + WD[d.getDay()];
 
