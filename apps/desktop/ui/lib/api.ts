@@ -34,6 +34,16 @@ export interface Settings {
   snooze_min: number;
   ring_every_min: number;
   sound: boolean;
+  /** 提示音（需求-1.x 第 42.5 节），种类见 lib/sound.ts 的 SOUNDS；custom 是自己选的文件 */
+  sound_kind: string;
+  /** 紧急的用哪种；空着是和上面一样、响一点 */
+  sound_urgent: string;
+  /** 0–100 */
+  sound_volume: number;
+  /** 一直响到点了卡片为止（最多 1 分钟），默认关 */
+  sound_loop: boolean;
+  /** 自己选的声音文件（复制到数据目录 sounds/ 里），只属于这台电脑 */
+  sound_file: string;
   autostart: boolean;
   /** 每天收尾，wrap_time 是 "HH:MM" */
   wrap: boolean;
@@ -532,6 +542,10 @@ export const api = {
   listNotes: () => invoke<Note[]>("list_notes"),
   getNote: (id: number) => invoke<Note | null>("get_note", { id }),
   pinNote: (id: number, on: boolean) => invoke<void>("pin_note", { id, on }),
+  /** 选一个自己的提示音文件，复制到数据目录里；回复制好的路径，没选是 null */
+  soundPick: () => invoke<string | null>("sound_pick"),
+  /** 笔记关联一条提醒（需求-1.x 第 42.2 节） */
+  linkNoteReminder: (id: number, reminderId: number) => invoke<void>("link_note_reminder", { id, reminderId }),
   /** 在单独的窗口里编辑这条笔记（已经开着就切到前面） */
   openNoteWindow: (id: number) => invoke<void>("open_note_window", { id }),
   /** 哪些笔记开着单独的编辑窗口 */

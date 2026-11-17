@@ -69,6 +69,7 @@ export const T = {
   vague: "时间待定",
   vagueTip: "说得含糊，时间是先定的",
   snoozed: (n: number) => `推迟过 ${n} 次`,
+  subs: (n: string) => `子项 ${n}`,
   doneAt: (when: string) => `${when} 做完`,
   complete: "完成",
   uncomplete: "取消完成",

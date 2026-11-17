@@ -5,7 +5,7 @@ import "./app.css";
 import "./look";
 import { icon, type IconName } from "@shared/icons";
 import { cat, head, type CatMood } from "@shared/mascot";
-import { fileSize, highlight, renderMd, setFileInfo, setTodo, snippet, todos } from "@shared/md";
+import { detailText, fileSize, highlight, renderMd, setFileInfo, setTodo, snippet, subsLabel, todos } from "@shared/md";
 import { captureDrafts, tableClick, tableInput, tableKey, tableStates, type TableCtx } from "@shared/tables";
 import { STYLES, TEXT, type StyleId } from "@shared/text";
 import { ago, copyText, esc, noteCatChips, noteCatDef, noteCatList, repeatLabel, setNoteCats, setTags, tagChips, tagColor, tagHtml, weekdayCn } from "@shared/util";
@@ -391,7 +391,7 @@ function remRow(r: SReminder, o: { done?: boolean; short?: boolean } = {}) {
   const time = o.done
     ? isUndated(r) ? T.doneAt("").trim() : T.doneAt(whenText(r.completed_at ?? r.last_done_at ?? f))
     : isUndated(r) ? "" : r.allday ? day() : o.short ? f.slice(11, 16) : whenText(f);
-  const sub = [r.detail, !o.done && r.snooze_count ? T.snoozed(r.snooze_count) : ""].filter(Boolean).join(" · ");
+  const sub = [detailText(r.detail), subsLabel(r.detail) && T.subs(subsLabel(r.detail)), !o.done && r.snooze_count ? T.snoozed(r.snooze_count) : ""].filter(Boolean).join(" · ");
   const tags = [
     r.urgent ? `<span class="tag" style="--c:var(--danger)">${T.urgent}</span>` : "",
     r.vague && !o.done ? `<span class="tag" style="${tagColor("amber")}" title="${T.vagueTip}">${T.vague}</span>` : "",

@@ -14,6 +14,8 @@ export const remindText = {
   snoozed: (n: number) => `已推迟 ${n} 次`,
   onlyOn: (names: string[]) => `只在${names.join("、")}`,
   openNote: "打开笔记",
+  subs: (n: string) => `子项 ${n}`,
+  subsMore: (n: number) => `还有 ${n} 项`,
   done: "完成",
   doneOnce: "完成这次",
   snooze: (min: number) => `${min} 分钟后`,

@@ -494,6 +494,7 @@ fn complete(r: &mut Reminder) {
     r.state = ST_WAIT;
     if r.repeat.is_recurring() {
         r.last_done_at = Some(now_s);
+        r.detail = db::reset_subs(&r.detail);
         if let Some(base) = db::parse_dt(&r.due_at) {
             if let Some(next) = recur::next_after(&r.repeat, base, base.max(now)) {
                 r.due_at = next.format(db::FMT).to_string();
@@ -646,6 +647,14 @@ fn save_note(app: AppHandle, window: WebviewWindow, st: tauri::State<AppState>, 
 #[tauri::command]
 fn pin_note(app: AppHandle, st: tauri::State<AppState>, id: i64, on: bool) -> Res<()> {
     db::pin_note(&st.db.lock().unwrap(), id, on).map_err(err)?;
+    notify_data(&app);
+    Ok(())
+}
+
+/// 笔记关联一条提醒（「⋯ → 设提醒 / 加待办」）
+#[tauri::command]
+fn link_note_reminder(app: AppHandle, st: tauri::State<AppState>, id: i64, reminder_id: i64) -> Res<()> {
+    db::link_note_reminder(&st.db.lock().unwrap(), id, reminder_id).map_err(err)?;
     notify_data(&app);
     Ok(())
 }
@@ -1184,7 +1193,7 @@ fn add_category(app: AppHandle, st: tauri::State<AppState>, field: String, name:
     }
     let color = COLORS.iter().find(|c| !list.iter().any(|t| t.color == **c)).unwrap_or(&"gray");
     let uid = uuid::Uuid::now_v7().simple().to_string();
-    let t = settings::TagDef { id: format!("t{}", &uid[uid.len() - 10..]), name, color: color.to_string() };
+    let t = settings::TagDef { id: format!("t{}", &uid[uid.len() - 10..]), name, color: color.to_string(), sound: String::new() };
     list.push(t.clone());
     settings::save(&st.db.lock().unwrap(), &s).map_err(err)?;
     *st.settings.lock().unwrap() = s.clone();
@@ -1567,6 +1576,38 @@ async fn pick_path(folder: bool) -> Option<String> {
     Some(p)
 }
 
+/// 提示音能用的声音文件
+const SOUND_EXTS: [&str; 4] = ["mp3", "wav", "ogg", "m4a"];
+
+/// 选一个自己的提示音（需求-1.x 第 42.5 节）：复制到数据目录的 sounds/ 里，原来的文件挪走、删掉都不影响。
+/// 回复制好的路径（界面存进设置，只属于这台电脑）；没选回 None，格式不认得、太大回错误
+#[tauri::command]
+async fn sound_pick(st: tauri::State<'_, AppState>) -> Res<Option<String>> {
+    let Some(src) = tauri::async_runtime::spawn_blocking(|| launcher::pick(false)).await.ok().flatten() else {
+        return Ok(None);
+    };
+    let src = PathBuf::from(src);
+    let ext = src.extension().and_then(|e| e.to_str()).map(|e| e.to_ascii_lowercase()).unwrap_or_default();
+    if !SOUND_EXTS.contains(&ext.as_str()) {
+        return Err("只认得 mp3、wav、ogg、m4a 这几种声音文件".into());
+    }
+    if std::fs::metadata(&src).map_err(err)?.len() > 5 * 1024 * 1024 {
+        return Err("声音文件太大了（超过 5 MB），换一个短一点的".into());
+    }
+    let dir = db::sound_dir(&st.data_dir);
+    std::fs::create_dir_all(&dir).map_err(err)?;
+    // 每次换个文件名，卡片不会用到缓存里的旧声音；复制好了才删原来的，复制失败原来的照样能用
+    let dst = dir.join(format!("custom-{}.{ext}", Local::now().format("%Y%m%d%H%M%S%3f")));
+    std::fs::copy(&src, &dst).map_err(err)?;
+    for e in std::fs::read_dir(&dir).map_err(err)?.flatten() {
+        if e.path() != dst {
+            let _ = std::fs::remove_file(e.path());
+        }
+    }
+    diag::log("设置", "换了自己的提示音");
+    Ok(Some(dst.to_string_lossy().into_owned()))
+}
+
 // ---------- 命令：自动更新 ----------
 
 #[tauri::command]
@@ -1791,6 +1832,7 @@ pub fn run() {
             let conn = db::open(&data_dir).inspect_err(|e| diag::log("出错", format!("打不开数据库：{e}")))?;
             // 笔记里的图片：配置里只放行了 $APPDATA 下的，调试时数据目录可能在别处
             let _ = app.asset_protocol_scope().allow_directory(db::attachment_dir(&data_dir), true);
+            let _ = app.asset_protocol_scope().allow_directory(db::sound_dir(&data_dir), false);
             let device = db::device_id(&conn)?;
             let saved = settings::load(&conn);
             let first_run = saved.is_none();
@@ -1863,6 +1905,8 @@ pub fn run() {
             save_note,
             delete_note,
             pin_note,
+            link_note_reminder,
+            sound_pick,
             get_note,
             open_note_window,
             note_windows,

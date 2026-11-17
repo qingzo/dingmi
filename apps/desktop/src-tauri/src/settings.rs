@@ -22,6 +22,16 @@ pub struct Settings {
     /// 提醒没处理时，每隔几分钟再响一次；0 表示不重复响
     pub ring_every_min: u32,
     pub sound: bool,
+    /// 提示音（需求-1.x 第 42.5 节）：dingmi 叮咪 / bright 清脆 / marimba 木琴 / soft 柔和 / bell 铃铛 / alarm 闹钟 / custom 自己选的文件
+    pub sound_kind: String,
+    /// 紧急的用哪种；空着是和上面一样、响一点
+    pub sound_urgent: String,
+    /// 音量 0–100
+    pub sound_volume: u32,
+    /// 一直响到点了卡片为止（最多 1 分钟）；默认关，怕打扰（作者定）
+    pub sound_loop: bool,
+    /// 自己选的声音文件，复制到数据目录的 sounds/ 里（只属于这台电脑；别的电脑没有这个文件就用叮咪）
+    pub sound_file: String,
     pub autostart: bool,
     /// 每天收尾：到了 wrap_time（"HH:MM"）弹一张卡片
     pub wrap: bool,
@@ -101,10 +111,13 @@ pub struct TagDef {
     pub name: String,
     /// 色板里的名字（blue、orange……），见 base.css 的 --tc-*
     pub color: String,
+    /// 这个分类的提示音（只有提醒分类用，需求-1.x 第 42.5 节）；空着跟默认。旧版本没有这一项
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub sound: String,
 }
 
 fn defs(list: &[(&str, &str, &str)]) -> Vec<TagDef> {
-    list.iter().map(|&(id, name, color)| TagDef { id: id.into(), name: name.into(), color: color.into() }).collect()
+    list.iter().map(|&(id, name, color)| TagDef { id: id.into(), name: name.into(), color: color.into(), sound: String::new() }).collect()
 }
 
 pub fn default_tags() -> Vec<TagDef> {
@@ -130,6 +143,11 @@ impl Default for Settings {
             snooze_min: 10,
             ring_every_min: 5,
             sound: true,
+            sound_kind: "dingmi".into(),
+            sound_urgent: String::new(),
+            sound_volume: 70,
+            sound_loop: false,
+            sound_file: String::new(),
             autostart: true,
             wrap: true,
             wrap_time: "18:00".into(),
@@ -184,6 +202,15 @@ pub struct Shared {
     pub calc: Option<bool>,
     #[serde(default)]
     pub web_keys: Option<Vec<WebKey>>,
+    /// 提示音的几项（1.0.10 加的），旧版本传来的没有，同上
+    #[serde(default)]
+    pub sound_kind: Option<String>,
+    #[serde(default)]
+    pub sound_urgent: Option<String>,
+    #[serde(default)]
+    pub sound_volume: Option<u32>,
+    #[serde(default)]
+    pub sound_loop: Option<bool>,
 }
 
 pub const SHARED_UID: &str = "settings";
@@ -207,6 +234,10 @@ impl Settings {
             note_cats: Some(self.note_cats.clone()),
             calc: Some(self.calc),
             web_keys: Some(self.web_keys.clone()),
+            sound_kind: Some(self.sound_kind.clone()),
+            sound_urgent: Some(self.sound_urgent.clone()),
+            sound_volume: Some(self.sound_volume),
+            sound_loop: Some(self.sound_loop),
         }
     }
 
@@ -235,6 +266,18 @@ impl Settings {
         }
         if let Some(k) = &s.web_keys {
             self.web_keys = k.clone();
+        }
+        if let Some(k) = &s.sound_kind {
+            self.sound_kind = k.clone();
+        }
+        if let Some(k) = &s.sound_urgent {
+            self.sound_urgent = k.clone();
+        }
+        if let Some(v) = s.sound_volume {
+            self.sound_volume = v.min(100);
+        }
+        if let Some(l) = s.sound_loop {
+            self.sound_loop = l;
         }
     }
 }
@@ -349,6 +392,20 @@ mod tests {
         let old: Shared = serde_json::from_str(r#"{"ai_base":"","ai_model":"","ai_key":null,"morning":true,"snooze_min":10,"ring_every_min":5,"sound":true,"wrap":true,"wrap_time":"18:00","inbox_auto":false,"sync_ai_key":true}"#).unwrap();
         c.merge_shared(&old);
         assert_eq!((c.web_keys.len(), c.calc), (2, false));
+        // 提示音跟着走，自己选的声音文件不走；旧版本传来的没有，保留自己的（需求-1.x 第 42.5 节）
+        a.sound_kind = "alarm".into();
+        a.sound_urgent = "bell".into();
+        a.sound_volume = 100;
+        a.sound_loop = true;
+        a.sound_file = r"C:\a\sounds\custom.mp3".into();
+        c.merge_shared(&a.shared());
+        assert_eq!((c.sound_kind.as_str(), c.sound_urgent.as_str(), c.sound_volume, c.sound_loop, c.sound_file.as_str()), ("alarm", "bell", 100, true, ""));
+        c.merge_shared(&old);
+        assert_eq!((c.sound_kind.as_str(), c.sound_volume, c.sound_loop), ("alarm", 100, true));
+        // 分类上的提示音：旧版本存的没有这一项；没设的不写出去
+        let t: TagDef = serde_json::from_str(r#"{"id":"work","name":"工作","color":"blue"}"#).unwrap();
+        assert_eq!(t.sound, "");
+        assert!(!serde_json::to_string(&t).unwrap().contains("sound"));
     }
 
     #[test]

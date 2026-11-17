@@ -186,28 +186,3 @@ export function debounce<A extends unknown[]>(fn: (...a: A) => void, ms: number)
     t = window.setTimeout(() => fn(...a), ms);
   };
 }
-
-/** 提醒音：两个柔和的音符；loud 时响一点、多叮一下（紧急的提醒） */
-export function chime(loud = false) {
-  try {
-    const ctx = new AudioContext();
-    const play = (freq: number, at: number) => {
-      const o = ctx.createOscillator();
-      const g = ctx.createGain();
-      o.type = "sine";
-      o.frequency.value = freq;
-      g.gain.setValueAtTime(0, ctx.currentTime + at);
-      g.gain.linearRampToValueAtTime(loud ? 0.42 : 0.22, ctx.currentTime + at + 0.02);
-      g.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + at + 0.9);
-      o.connect(g).connect(ctx.destination);
-      o.start(ctx.currentTime + at);
-      o.stop(ctx.currentTime + at + 1);
-    };
-    play(880, 0);
-    play(1318.5, 0.16);
-    if (loud) play(1760, 0.32);
-    setTimeout(() => ctx.close(), 1800);
-  } catch {
-    /* 没有声卡也没关系 */
-  }
-}

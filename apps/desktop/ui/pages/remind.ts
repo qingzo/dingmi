@@ -7,7 +7,9 @@ import { api, errText, type Device, type Note, type Reminder, type ReminderActio
 import { hasTime, parseLocal } from "../lib/parse";
 import { icon } from "@shared/icons";
 import { cat, type CatMood } from "@shared/mascot";
-import { $, addDays, chime, esc, fireAt, fmtDT, isRecurring, parseDT, repeatLabel, setTags, tagHtml } from "@shared/util";
+import { splitSubs, subsLabel } from "@shared/md";
+import { $, addDays, esc, fireAt, fmtDT, isRecurring, parseDT, repeatLabel, setTags, tagDef, tagHtml } from "@shared/util";
+import { ring } from "../lib/sound";
 import { remindText as T, whenFull, whenPast, whenShort } from "../text/cards";
 
 // 提醒卡片（U5）：右下角一张，几条一起到点也只有一张，依次处理。出现时不抢键盘，点一下才接收按键：
@@ -24,6 +26,10 @@ let devices: Device[] = [];
 let notes: Note[] = [];
 let snoozeMin = 10;
 let sound = true;
+/** 提示音的设置（需求-1.x 第 42.5 节） */
+let snd = { kind: "dingmi", urgent: "", volume: 70, loop: false, file: "" };
+/** 正在响的停下来（一直响到点了卡片为止的那种） */
+let stopRing = () => {};
 let shown = false;
 /** card 一条 / pick 推迟到… / held 专注时攒的几条 / gone 别的电脑处理了 */
 let mode: "card" | "pick" | "held" | "gone" = "card";
@@ -87,7 +93,7 @@ function renderCard(r: Reminder) {
   card.innerHTML = `
     <button class="x" data-act="snooze" title="${esc(T.close(snoozeMin))}" aria-label="${esc(T.snooze(snoozeMin))}">${icon("x")}</button>
     <div class="hd">${corner(late ? "worry" : "ring", late)}<div class="m">${when}
-      <div class="title">${esc(r.title)}</div>${r.detail ? `<div class="detail">${esc(r.detail)}</div>` : ""}</div>
+      <div class="title">${esc(r.title)}</div>${detailHtml(r.detail)}</div>
       ${next.length ? `<span class="more">${T.more(next.length)}</span>` : ""}</div>
     ${meta ? `<div class="meta">${meta}</div>` : ""}
     ${note ? `<button class="link" data-note="${note.id}">${icon("notebook-pen")}<span>${esc(note.title || "")}</span><small>${T.openNote}</small></button>` : ""}
@@ -272,9 +278,33 @@ async function doReload() {
     await fit();
     // 不抢焦点：正在别处打字不会被打断，点一下卡片才接收按键
     await api.showQuiet();
-    if (sound) chime(queue.some((r) => r.urgent));
+    playRing();
   }
 }
+
+/** 响一下：有紧急的用「紧急的」那种（没设就同一种、响一点）；不然用这条的分类自己的，没设用默认的 */
+function playRing() {
+  if (!sound) return;
+  stopRing();
+  const urgent = queue.some((r) => r.urgent);
+  const first = showing[0] ?? queue[0];
+  const kind = urgent ? snd.urgent || snd.kind : tagDef(first?.tag)?.sound || snd.kind;
+  stopRing = ring(kind, { volume: snd.volume, loud: urgent && !snd.urgent, file: snd.file }, snd.loop);
+}
+// 点一下卡片、按一个键，一直响的就停
+card.addEventListener("pointerdown", () => stopRing());
+window.addEventListener("keydown", () => stopRing());
+
+/** 备注：文字照原样，子项列出来、标出勾了几个（需求-1.x 第 42.1 节）；卡片上只看，勾要到主窗口里 */
+function detailHtml(detail: string): string {
+  const { text, subs } = splitSubs(detail);
+  const shown = subs.slice(0, SUBS_SHOWN);
+  const list = subs.length
+    ? `<div class="subs"><div class="subh">${T.subs(subsLabel(detail))}</div>${shown.map((s) => `<div class="sub${s.done ? " on" : ""}">${icon(s.done ? "square-check" : "square")}<span>${esc(s.text)}</span></div>`).join("")}${subs.length > shown.length ? `<div class="sub more">${T.subsMore(subs.length - shown.length)}</div>` : ""}</div>`
+    : "";
+  return `${text ? `<div class="detail">${esc(text)}</div>` : ""}${list}`;
+}
+const SUBS_SHOWN = 5;
 
 card.addEventListener("click", async (e) => {
   const el = e.target as HTMLElement;
@@ -317,7 +347,7 @@ document.addEventListener("keydown", (e) => {
 listen("queue-changed", () => reload());
 // 又到点了一条，或者没处理隔几分钟再响：团子猫再摇一次铃铛
 listen("ring", () => {
-  if (sound) chime(queue.some((r) => r.urgent));
+  playRing();
   const m = card.querySelector(".mascot");
   m?.classList.remove("play");
   void card.offsetWidth;
@@ -328,6 +358,7 @@ listen("ring", () => {
   const [s, d] = await Promise.all([api.getSettings().catch(() => null), api.listDevices().catch(() => [])]);
   snoozeMin = s?.snooze_min ?? 10;
   sound = s?.sound ?? true;
+  if (s) snd = { kind: s.sound_kind || "dingmi", urgent: s.sound_urgent ?? "", volume: s.sound_volume ?? 70, loop: !!s.sound_loop, file: s.sound_file ?? "" };
   setTags(s?.tags);
   devices = d;
   await reload();

@@ -1,5 +1,6 @@
 // 手机版的数据：和电脑端同步的记录格式（apps/desktop/src-tauri/src/sync/records.rs）、周期提醒（recur.rs）、版本号（clock.rs）。
 // 字段名和取值都要和电脑端一模一样，电脑端才认得手机改过的记录。
+import { resetSubs } from "@shared/md";
 import { isRecurring, nextAfter, type RepeatRule } from "@shared/recur";
 
 /** 格式见 docs/方案/同步方案.md 4.2；month、nth 是 0.2 加的，旧记录没有 */
@@ -186,6 +187,8 @@ export function complete(r: SReminder, now = new Date()): SReminder {
   const out = { ...r, snoozed_until: null };
   if (isRecurring(r.repeat)) {
     out.last_done_at = fmtMin(now);
+    // 子项都变回没勾，下一次重新做（需求-1.x 第 42.1 节）
+    if (r.detail) out.detail = resetSubs(r.detail);
     const base = parseDT(r.due_at);
     const next = base && nextAfter(r.repeat, base, base > now ? base : now);
     if (next) out.due_at = fmtMin(next);

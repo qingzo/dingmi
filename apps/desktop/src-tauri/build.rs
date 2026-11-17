@@ -88,6 +88,8 @@ const COMMANDS: &[&str] = &[
     "pick_folder",
     "pick_path",
     "pin_note",
+    "link_note_reminder",
+    "sound_pick",
     "reminder_action",
     "reminder_changed_on",
     "restore_apply",

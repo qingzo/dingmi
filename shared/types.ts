@@ -8,6 +8,8 @@ export interface TagDef {
   name: string;
   /** 色板里的名字，见 TAG_COLORS */
   color: string;
+  /** 这个分类的提示音（只有提醒分类用，需求-1.x 第 42.5 节）；没有是跟默认 */
+  sound?: string;
 }
 /** 格式见 docs/方案/同步方案.md 4.2 */
 export type RepeatKind = "" | "none" | "daily" | "weekdays" | "weekly" | "monthly" | "interval" | "yearly" | "month_last" | "month_nth" | "lunar_yearly";

@@ -376,7 +376,8 @@ function parseOne(text: string, now: Date, prevDate: Date | null): One {
 
   // 提前量
   let ahead = 0;
-  if ((m = cut(new RegExp(`提前\\s*(${NUMS}|半)\\s*个?\\s*(分钟|小时|钟头|天|${WEEK})\\s*(?:提醒我?|叫我|告诉我|通知我)?`)))) {
+  // 「提前一天准备」的「准备」后面没别的字时一起切掉，不留在标题里（「提前一天准备材料」留着）
+  if ((m = cut(new RegExp(`提前\\s*(${NUMS}|半)\\s*个?\\s*(分钟|小时|钟头|天|${WEEK})\\s*(?:提醒我?|叫我|告诉我|通知我|(?:做好?)?准备(?:一下)?(?=$|[，,。；;！!\\s]))?`)))) {
     const n = m[1] === "半" ? 0.5 : cnNum(m[1]) ?? 0;
     ahead = n * (m[2] === "分钟" ? 1 : m[2] === "天" ? 1440 : /周|星期|礼拜/.test(m[2]) ? 10080 : 60);
   }
@@ -630,14 +631,26 @@ function parseOne(text: string, now: Date, prevDate: Date | null): One {
   for (const d of dues) repeats.push([repeat, d]);
   if (rangeLen && repeats[0]) details.push(`${hm(repeats[0][1])}–${hm(addMin(repeats[0][1], rangeLen))}`);
   const tag = recurring && tagDef("cycle") && /还款|账单|缴费|续费|房租/.test(text) ? "cycle" : guessTag(text);
+  // 只发生一次的事提前几天、几周：提前那天一条「准备：……」，当天也记一条（需求-1.x 第 42.3 节）；
+  // 周期的、提前几分钟几小时的只记提前那一条
+  const both = ahead >= 1440 && !recurring;
   for (const [rule, due0] of repeats) {
     let due = due0;
     const detail = [...details];
+    const name = title || "时间到了";
     if (ahead) {
-      detail.push(`事情本身在 ${due.getMonth() + 1}月${due.getDate()}日 ${hm(due)}`);
+      detail.push(`事情本身在 ${due.getMonth() + 1}月${due.getDate()}日${hasClock || rel ? " " + hm(due) : ""}`);
       due = addMin(due, -ahead);
+      // 记两条时提前那天已经过了（今天说「明天升级，提前两天准备」）：10 分钟后提醒，不然一存就是过点了
+      if (both && due <= now) due = ceil5(addMin(now, 10));
     }
-    one.items.push({ type: "reminder", title: title || "时间到了", detail: detail.join("，"), tag, due: fmtDT(due), repeat: rule, urgent, only_on: [], guess, allday });
+    one.items.push({ type: "reminder", title: both && title ? `准备：${title}` : name, detail: detail.join("，"), tag, due: fmtDT(due), repeat: rule, urgent, only_on: [], guess, allday });
+    if (both) {
+      // 当天：说了几点的到点弹，只说了哪天的那天放在「今天」里
+      const day = !hasClock && !rel;
+      const at0 = day ? at(due0, 9, 0) : due0;
+      one.items.push({ type: "reminder", title: name, detail: details.join("，"), tag, due: fmtDT(at0), repeat: rule, urgent, only_on: [], guess, allday: day && !urgent });
+    }
   }
   return one;
 }
@@ -651,6 +664,8 @@ function clean(s: string): string {
     .replace(/提醒一下我?|提醒我|提醒|通知我|告诉我|叫我|记得要?|别忘了?|别忘记|不要忘了?|不要忘记|帮我|一下|到时候|的时候/g, C)
     // "从下周一开始每天跑步"、"在周五交报告"、"7 点开始开会"：跟着时间的这几个字一起去掉
     .replace(new RegExp(`(?:从|在|于)\\s*(?=${C})`, "g"), C)
+    // "医院约周末升级"：时间前面的"约"（约好了、大约）一起去掉；开头的"约周五吃饭"留着
+    .replace(new RegExp(`(?<=[\\u4e00-\\u9fff])约\\s*(?=${C})`, "g"), C)
     .replace(new RegExp(`(?<=${C})\\s*(?:开始|起)(?![来床飞])`, "g"), C)
     .replace(new RegExp(`(?<=${C})\\s*的(?=[\\u4e00-\\u9fff])`, "g"), C);
   // 切掉的地方：原来有空格就留一个空格，两边都是英文、数字也留一个，别的直接接上

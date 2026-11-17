@@ -5,7 +5,7 @@ import { getCurrentWindow } from "@tauri-apps/api/window";
 import { api, errText, type Note, type Reminder, type Settings } from "../lib/api";
 import { icon } from "@shared/icons";
 import { cat } from "@shared/mascot";
-import { plain } from "@shared/md";
+import { detailText, plain, subsLabel } from "@shared/md";
 import { $, addDays, dayStr, esc, fireAt, fmtDT, hotkeyText, isRecurring, parseDT, timeOf } from "@shared/util";
 import { dateLine, morningText as T, remindText as R, whenPast } from "../text/cards";
 
@@ -176,7 +176,7 @@ $("#card").addEventListener("mousedown", (e) => {
   await fit();
   const lines = [
     "今天的日程：",
-    ...today.map((r) => `- ${r.allday ? "今天之内" : timeOf(fireAt(r))} ${r.title}${r.detail ? `（${r.detail}）` : ""}${r.urgent ? " [紧急]" : ""}${isRecurring(r.repeat) ? " [周期]" : ""}`),
+    ...today.map((r) => `- ${r.allday ? "今天之内" : timeOf(fireAt(r))} ${r.title}${detailText(r.detail) ? `（${detailText(r.detail)}）` : ""}${subsLabel(r.detail) ? ` [子项 ${subsLabel(r.detail)}]` : ""}${r.urgent ? " [紧急]" : ""}${isRecurring(r.repeat) ? " [周期]" : ""}`),
     ...(late.length ? ["之前没处理完的：", ...late.map((r) => `- ${fireAt(r)} ${r.title}`)] : []),
     "最近的笔记：",
     ...notes.slice(0, 5).map((n) => `- ${n.title}：${plain(n.body).slice(0, 60)}`),

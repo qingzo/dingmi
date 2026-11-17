@@ -7,6 +7,7 @@ import { api, errText, type DiagPart, type WebKey, type Checklist, type Exported
 import { mascotDefault, mascotOn, previewLook } from "../lib/look";
 import { iconHtml, visible } from "../lib/launch";
 import { checkKey } from "../lib/webkey";
+import { CUSTOM, ring, SOUNDS } from "../lib/sound";
 import { findRows, markName, rowsOf, type Found } from "../lib/setfind";
 import { icon, type IconName } from "@shared/icons";
 import { appIcon, cat } from "@shared/mascot";
@@ -255,7 +256,6 @@ async function generalHtml(s: Settings) {
   return `${head(pageName("general"), T.hint.general as string)}
     ${rows(
       row("autostart", G.autostart, tog("autostart", G.autostart.name), { local: true }),
-      row("sound", G.sound, tog("sound", G.sound.name)),
       row("flash_selection", G.flash_selection, tog("flash_selection", G.flash_selection.name), { local: true }),
     )}
     ${h5(T.hkSec)}<div class="srows" id="hk-rows">${hkRows()}</div><p class="fhelp${notice ? " err" : ""}" id="hk-msg">${notice ? esc(notice) : ""}</p>
@@ -352,12 +352,87 @@ function remindHtml() {
       row("ring_every_min", R.ring_every_min, select("ring_every_min", R.ring_every_min.name, T.ringOpts)),
       row("auto_focus", R.auto_focus, tog("auto_focus", R.auto_focus.name), { local: true }),
     )}
+    ${h5(T.soundSec)}<div id="snd-box">${soundRows()}</div>
     ${h5(T.cardsSec)}
     ${rows(
       row("morning", R.morning, look("s-morning") + tog("morning", R.morning.name)),
       row("wrap", R.wrap, look("s-wrapnow") + select("wrap_time", T.wrapAt, WRAP_TIMES.map((t) => [t, t])) + tog("wrap", R.wrap.name)),
     )}
     ${h5(R.tags.name, { id: "tags" })}<div class="srows" id="tag-rows"></div><p class="fhelp err" id="tag-msg"></p>`;
+}
+
+// ---------- 提示音（需求-1.x 第 42.5 节） ----------
+
+/** 能选的声音：内置的，选过自己的文件再多一个。别的电脑选了自己的声音（这台没有文件）也列出来，不然下拉框显示的不是真的在用的 */
+function soundOpts(): [string, string][] {
+  const s = S.settings;
+  const used = !!s && (s.sound_kind === CUSTOM || s.sound_urgent === CUSTOM || s.tags.some((t) => t.sound === CUSTOM));
+  if (s?.sound_file) return [...SOUNDS, [CUSTOM, T.soundCustom]];
+  return used ? [...SOUNDS, [CUSTOM, T.soundCustomNone]] : SOUNDS;
+}
+
+function soundRows() {
+  const s = S.settings!;
+  const R = ROWS.remind;
+  const tryBtn = (k: string) => `<button class="btn sm ghost" data-sndtry="${k}">${icon("volume-2")}${T.soundTry}</button>`;
+  const file = s.sound_file ? s.sound_file.split(/[\\/]/).pop()!.replace(/^custom-\d+/, T.soundCustom) : T.soundNoFile;
+  return rows(
+    row("sound", R.sound, tog("sound", R.sound.name)),
+    ...(s.sound
+      ? [
+          row("sound_kind", R.sound_kind, tryBtn("sound_kind") + select("sound_kind", R.sound_kind.name, soundOpts())),
+          row("sound_urgent", R.sound_urgent, tryBtn("sound_urgent") + select("sound_urgent", R.sound_urgent.name, [["", T.soundSame], ...soundOpts()])),
+          row("sound_volume", R.sound_volume, select("sound_volume", R.sound_volume.name, T.soundVols)),
+          row("sound_loop", R.sound_loop, tog("sound_loop", R.sound_loop.name)),
+          row("sound_file", R.sound_file, `<span class="sndfile">${esc(file)}</span>${s.sound_file ? `<button class="btn sm ghost" data-sndclear>${T.soundClear}</button>` : ""}<button class="btn sm" data-sndpick>${T.soundPick}</button>`, { local: true }),
+        ]
+      : []),
+  );
+}
+
+/** 听听：紧急的没单独选就是同一种、响一点 */
+function trySound(kind: string, loud = false) {
+  const s = S.settings!;
+  ring(kind || s.sound_kind, { volume: s.sound_volume, loud, file: s.sound_file });
+}
+
+function redrawSound() {
+  const box = document.querySelector("#snd-box");
+  if (box) box.innerHTML = soundRows();
+  renderCats();
+}
+
+/** 提示音那几行的按钮，处理了返回 true */
+async function soundClick(el: HTMLElement): Promise<boolean> {
+  const s = S.settings!;
+  const t = el.closest<HTMLElement>("[data-sndtry]")?.dataset.sndtry;
+  if (t === "sound_kind") return trySound(s.sound_kind), true;
+  if (t === "sound_urgent") return trySound(s.sound_urgent, !s.sound_urgent), true;
+  if (el.closest("[data-sndpick]")) {
+    try {
+      const p = await api.soundPick();
+      if (!p) return true;
+      s.sound_file = p;
+      s.sound_kind = CUSTOM;
+      if (await saveSettings()) toast(T.soundPicked);
+    } catch (e) {
+      toast(errText(e));
+    }
+    redrawSound();
+    return true;
+  }
+  if (el.closest("[data-sndclear]")) {
+    s.sound_file = "";
+    // 用着自己的声音的地方都换回叮咪
+    if (s.sound_kind === CUSTOM) s.sound_kind = "dingmi";
+    if (s.sound_urgent === CUSTOM) s.sound_urgent = "";
+    s.tags = s.tags.map((x) => (x.sound === CUSTOM ? { ...x, sound: "" } : x));
+    setTags(s.tags);
+    if (await saveSettings()) toast(T.soundCleared);
+    redrawSound();
+    return true;
+  }
+  return false;
 }
 
 // ---------- 提醒分类、笔记分类：颜色、名字和条数、换颜色 / 改名 / 删掉；最下面「加一个」 ----------
@@ -404,7 +479,7 @@ function renderCatRows(k: CatKindKey) {
             : `<span class="nm">${esc(t.name)} <small>${T.catCount(kind.used(t.id))}</small></span>`;
         return `<div class="catrow" data-tid="${esc(t.id)}" data-kind="${k}" style="${tagColor(t.color)}">
           <span class="sw"></span>${name}
-          ${ib(`data-tcolor aria-expanded="${picking}"`, "palette", T.catColor)}${ib("data-tren", "pencil", T.catRename)}${ib("data-tdel", "trash-2", T.catDel, " danger")}
+          ${k === "tag" && S.settings?.sound ? catSound(t) : ""}${ib(`data-tcolor aria-expanded="${picking}"`, "palette", T.catColor)}${ib("data-tren", "pencil", T.catRename)}${ib("data-tdel", "trash-2", T.catDel, " danger")}
         </div>${picking ? `<div class="swatches" data-kind="${k}">${TAG_COLORS.map((c) => `<button data-tpick="${c}" style="${tagColor(c)}" aria-pressed="${c === t.color}" aria-label="${c}"></button>`).join("")}</div>` : ""}`;
       })
       .join("") +
@@ -415,6 +490,12 @@ function renderCatRows(k: CatKindKey) {
         : `<div class="catrow" data-kind="${k}"><button class="btn sm ghost add" data-tnewopen>${icon("plus")}${T.catAdd}</button></div>`);
   box.querySelector<HTMLInputElement>("[data-tname], [data-tnew]")?.focus();
 }
+
+/** 提醒分类自己的提示音（需求-1.x 第 42.5 节）：空着跟默认 */
+const catSound = (t: TagDef) =>
+  `<select class="field csnd" data-tsound title="${T.catSound}" aria-label="${T.catSound}">${[["", T.catSoundDefault], ...soundOpts()]
+    .map(([v, l]) => `<option value="${v}" ${v === (t.sound ?? "") ? "selected" : ""}>${esc(l)}</option>`)
+    .join("")}</select>`;
 
 function catMsg(k: CatKindKey, text: string) {
   const m = document.querySelector(`#${k}-msg`);
@@ -1110,6 +1191,7 @@ body.addEventListener("click", async (e) => {
   if (await syncClick(el)) return;
   if (await webKeyClick(el)) return;
   if (await quickClick(el)) return;
+  if (await soundClick(el)) return;
   if (await catClick(el)) return;
   const look = el.closest<HTMLElement>("[data-look]");
   if (look) return lookClick(look);
@@ -1122,6 +1204,8 @@ body.addEventListener("click", async (e) => {
     if (await saveSettings()) toast(T.saved);
     // 开了毛玻璃才有「深浅」那一行
     if (k === "widget_glass") await renderSettings();
+    // 开关提示音：下面几行跟着出来或收起
+    if (k === "sound") redrawSound();
     return;
   }
   const part = el.closest<HTMLElement>("button[data-wpart]");
@@ -1219,10 +1303,20 @@ body.addEventListener("input", (e) => syncInput(e.target as HTMLElement));
 
 body.addEventListener("change", async (e) => {
   const el = e.target as HTMLInputElement | HTMLSelectElement;
+  // 提醒分类的提示音：换了就响一下给你听
+  if (el.matches("[data-tsound]")) {
+    const id = el.closest<HTMLElement>("[data-tid]")!.dataset.tid!;
+    await saveCats("tag", tagList().map((t) => (t.id === id ? { ...t, sound: el.value || undefined } : t)));
+    if (el.value) trySound(el.value);
+    return;
+  }
   const k = el.dataset.set as keyof Settings | undefined;
   if (!k || !S.settings) return;
   (S.settings as unknown as Record<string, unknown>)[k] = "num" in el.dataset ? Number(el.value) : el.value.trim();
   if (await saveSettings()) toast(T.saved);
+  if (k === "sound_kind") trySound(S.settings.sound_kind);
+  else if (k === "sound_urgent") trySound(S.settings.sound_urgent, !S.settings.sound_urgent);
+  else if (k === "sound_volume") trySound(S.settings.sound_kind);
 });
 
 body.addEventListener("keydown", (e) => {

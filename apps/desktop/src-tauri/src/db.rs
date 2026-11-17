@@ -585,6 +585,17 @@ pub fn pin_note(c: &Connection, id: i64, on: bool) -> rusqlite::Result<()> {
     Ok(())
 }
 
+/// 笔记关联一条提醒（笔记「⋯ → 设提醒 / 加待办」，需求-1.x 第 42.2 节）：和置顶一样不算改过笔记，
+/// 正在改这篇笔记的编辑器不会当成「别处改过了」
+pub fn link_note_reminder(c: &Connection, id: i64, reminder_id: i64) -> rusqlite::Result<()> {
+    c.execute(
+        "UPDATE notes SET reminder_id=?2, reminder_uid=(SELECT uid FROM reminders WHERE id=?2), ver=?3, dirty=1
+         WHERE id=?1 AND deleted_at IS NULL AND EXISTS(SELECT 1 FROM reminders WHERE id=?2)",
+        params![id, reminder_id, clock::next()],
+    )?;
+    Ok(())
+}
+
 pub fn delete_note(c: &Connection, id: i64) -> rusqlite::Result<()> {
     c.execute(
         "UPDATE notes SET deleted_at=?2, ver=?3, dirty=1 WHERE id=?1 AND deleted_at IS NULL",
@@ -654,6 +665,27 @@ pub fn purge_trash(c: &Connection, before: Option<&str>) -> rusqlite::Result<usi
 }
 
 // ---------- 图片（附件） ----------
+
+/// 重复的提醒完成一次：备注里的子项（`- [x] …`）都变回没勾，下一次重新做（需求-1.x 第 42.1 节）
+pub fn reset_subs(detail: &str) -> String {
+    detail
+        .split('\n')
+        .map(|line| {
+            let t = line.trim_start();
+            let pad = &line[..line.len() - t.len()];
+            match t.get(..5) {
+                Some("- [x]" | "- [X]" | "* [x]" | "* [X]") => format!("{pad}{} {}", &t[..3], &t[4..]),
+                _ => line.to_string(),
+            }
+        })
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
+/// 自己选的提示音放在数据目录的 sounds/ 下（需求-1.x 第 42.5 节），只在这台电脑上
+pub fn sound_dir(data_dir: &Path) -> PathBuf {
+    data_dir.join("sounds")
+}
 
 /// 附件文件放在数据目录的 attachments/ 下，文件名是 <uid>.<扩展名>
 pub fn attachment_dir(data_dir: &Path) -> PathBuf {
@@ -1441,6 +1473,14 @@ mod tests {
         assert_eq!(toggle_todo_line(&ticked, "交电费", true), None);
         assert_eq!(toggle_todo_line(body, "不存在", true), None);
         assert_eq!(toggle_todo_line(body, "洗车", false).unwrap().lines().nth(3), Some("- [ ] 洗车"));
+    }
+
+    #[test]
+    fn reset_subs_unticks_only_subs() {
+        let d = "带上身份证\n- [x] 订票\n  - [X] 收拾行李\n- [ ] 叫车\n[x] 不是子项";
+        assert_eq!(reset_subs(d), "带上身份证\n- [ ] 订票\n  - [ ] 收拾行李\n- [ ] 叫车\n[x] 不是子项");
+        assert_eq!(reset_subs("- [x]"), "- [ ]");
+        assert_eq!(reset_subs(""), "");
     }
 
     #[test]

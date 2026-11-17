@@ -39,9 +39,9 @@
 ## Features
 
 - **Quick box** (`Alt + Space`): one sentence becomes a reminder, a to-do or a note. Understands times, weekdays, the lunar calendar, "remind me N days early", several events in one sentence. Select text first and it's brought in automatically.
-- **Reminder cards** slide in from the bottom-right corner with a chime: done, 10 minutes later, tomorrow, snooze until… They stay until you deal with them.
+- **Reminder cards** slide in from the bottom-right corner with a chime: done, 10 minutes later, tomorrow, snooze until… They stay until you deal with them. Pick from several built-in sounds (per category, or a separate one for urgent reminders) or use your own sound file.
 - **Focus mode** turns on automatically when something is full-screen and holds non-urgent reminders until you're done.
-- **To-dos**: things without a time get their own list, together with the unchecked `- [ ]` items from your notes. Add a time later and it becomes a reminder.
+- **To-dos**: things without a time get their own list, together with the unchecked `- [ ]` items from your notes. Add a time later and it becomes a reminder. Break a task into subtasks and tick them off one by one.
 - **Notebook**: Markdown, images, files, tables; to-dos in notes can get reminders too. `Ctrl + Alt + N` opens a small window for quick notes.
 - **Launcher**: pinyin and initials (`wx` finds 微信 WeChat), recent apps and pinned apps, search your notes with `?`, a calculator, web keywords.
 - **Desktop widget**, **morning briefing** and **evening wrap-up**.

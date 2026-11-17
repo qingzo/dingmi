@@ -136,6 +136,44 @@ export function setTodo(src: string, line: number, done: boolean): string {
   return lines.join("\n");
 }
 
+// ---------- 提醒的子项（需求-1.x 第 42.1 节） ----------
+// 存在备注里：别的文字在前，最后一行一个 `- [ ] 子项`。旧版和手机上看到的就是几行文字。
+
+export interface Sub {
+  text: string;
+  done: boolean;
+}
+
+/** 备注拆成别的文字和子项 */
+export function splitSubs(detail: string): { text: string; subs: Sub[] } {
+  const text: string[] = [];
+  const subs: Sub[] = [];
+  for (const raw of detail.split("\n")) {
+    const m = raw.trim().match(TODO);
+    if (m) subs.push({ text: m[2].trim(), done: m[1] !== " " });
+    else text.push(raw);
+  }
+  return { text: text.join("\n").trim(), subs };
+}
+
+/** 别的文字和子项拼回备注；空着的子项不要 */
+export function joinSubs(text: string, subs: Sub[]): string {
+  const lines = subs.filter((s) => s.text.trim()).map((s) => `- [${s.done ? "x" : " "}] ${s.text.trim()}`);
+  return [text.trim(), lines.join("\n")].filter(Boolean).join("\n");
+}
+
+/** 备注里除了子项的文字（一行显示用） */
+export const detailText = (detail: string) => splitSubs(detail).text.replace(/\s*\n\s*/g, " ");
+
+/** 子项勾了几个：「1/3」，没有子项是空的 */
+export function subsLabel(detail: string): string {
+  const { subs } = splitSubs(detail);
+  return subs.length ? `${subs.filter((s) => s.done).length}/${subs.length}` : "";
+}
+
+/** 重复的提醒完成一次：子项都变回没勾，下一次重新做 */
+export const resetSubs = (detail: string) => detail.replace(/^(\s*[-*]\s+\[)[xX](\])/gm, "$1 $2");
+
 /** 表格的分隔行：| --- | :---: | ---: | */
 const TABLE_SEP = /^\|?\s*:?-+:?\s*(\|\s*:?-+:?\s*)*\|?$/;
 

@@ -243,6 +243,11 @@ button.tag { border: 0; cursor: pointer; }
 .nbi .mt { display: flex; align-items: center; gap: 8px; margin-top: 2px; color: var(--ink-3); font-size: calc(11px * var(--fs)); }
 .nbi .mt span { display: inline-flex; }
 .nbi .mt .lucide { width: 12px; height: 12px; }
+/* 只看标题（需求-1.x 第 42.4 节）：一行一篇，右边日期和小图标 */
+.nbk-items.titles .nbi { grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 10px; padding: 7px 10px; }
+.nbk-items.titles .nbi small { display: none; }
+.nbk-items.titles .nbi .mt { margin-top: 0; }
+.vh #nb-look { margin-left: 4px; }
 .nbi mark, .palette mark { padding: 0; background: transparent; color: var(--accent-ink); font-weight: 700; }
 .nbk-l .empty { padding-top: 28px; }
 .nbk-l .empty .cat { width: 84px; height: 72px; }
@@ -334,6 +339,21 @@ button.tag { border: 0; cursor: pointer; }
 .repbox .chipsel { height: 26px; padding: 0 8px; }
 .swrow { display: flex; align-items: center; justify-content: space-between; gap: 12px; font-size: calc(13px * var(--fs)); }
 .swrow small { display: block; color: var(--ink-3); font-size: calc(11.5px * var(--fs)); }
+/* 子项（需求-1.x 第 42.1 节）：圆圈勾、可以直接改的字、删掉 */
+.fl .subn { margin-left: 6px; font-style: normal; color: var(--ink-3); }
+.subs { display: grid; gap: 2px; }
+.subs:empty { display: none; }
+.sub { display: flex; align-items: center; gap: 8px; padding-left: 2px; }
+.sub .task { width: 17px; height: 17px; }
+.sub .task .lucide { width: 11px; height: 11px; }
+.sub .subt { flex: 1; min-width: 0; height: 28px; padding: 0 4px; border: 0; border-radius: var(--r-sm); background: none; color: var(--ink); font: inherit; font-size: calc(13px * var(--fs)); }
+.sub .subt:focus { outline: none; background: var(--hover); }
+.sub .subt.on { color: var(--ink-3); text-decoration: line-through; }
+.sub [data-subdel] { opacity: 0; }
+.sub:hover [data-subdel], .sub:focus-within [data-subdel] { opacity: 1; }
+.subadd.field { height: 30px; font-size: calc(13px * var(--fs)); }
+.it .subc { display: inline-flex; align-items: center; gap: 3px; flex: none; color: var(--ink-3); font-size: calc(12px * var(--fs)); }
+.it .subc .lucide { width: 13px; height: 13px; }
 .linkn { gap: 8px; text-align: left; cursor: pointer; }
 .linkn span { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .linkn:hover { border-color: var(--ink-3); }

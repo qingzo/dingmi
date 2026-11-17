@@ -116,6 +116,9 @@ h5.flash { color: var(--accent-ink); }
 .catrow > .field { flex: 1; max-width: 220px; height: 30px; }
 .catrow > small { flex: 1; color: var(--ink-3); }
 .catrow .btn.add { margin-left: -10px; }
+/* 提醒分类自己的提示音（需求-1.x 第 42.5 节） */
+.catrow .csnd { width: auto; height: 28px; font-size: calc(12px * var(--fs)); }
+.sndfile { max-width: 160px; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; color: var(--ink-3); font-size: calc(12px * var(--fs)); }
 .catrow [aria-expanded="true"] { background: var(--press); color: var(--ink); }
 .swatches { display: flex; flex-wrap: wrap; gap: 10px; padding: 2px 0 12px 24px; }
 .swatches button { width: 18px; height: 18px; padding: 0; border: 0; border-radius: 50%; background: var(--c); }
