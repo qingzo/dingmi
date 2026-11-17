@@ -69,6 +69,12 @@ const MANUAL = [
     ok: true, // 系统组件，不和叮咪的代码合在一起，不用和 AGPL 兼容
     note: "源码里没有，只在打出来的安装包里；WebView2 是系统组件（AGPL 第 1 节说的「系统库」）。https://developer.microsoft.com/microsoft-edge/webview2/",
   },
+  {
+    name: "Everything 1.4.1.1032（x64 便携版）",
+    where: "「一键开启全盘搜索」时才从 dingmi.app 下载（核对 voidtools 公布的 SHA-256），放在 %LOCALAPPDATA%\\app.dingmi\\everything，单独运行、叮咪通过它的查询接口问（apps/desktop/src-tauri/src/everything.rs、filesearch.rs）",
+    license: "MIT",
+    note: "© 2018 David Carpenter（voidtools）；它里面还用到 PCRE（BSD）等，全文见 https://www.voidtools.com/License.txt（dingmi.app 的下载目录里放一份）。源码里、安装包里都没有。https://www.voidtools.com/",
+  },
 ];
 
 /** 和 AGPL-3.0 能放在一起的许可证（只认这些，别的都标出来看一眼） */

@@ -68,6 +68,20 @@ img.ic { object-fit: contain; border-radius: 0; }
 /* 网页关键字、随手算（U4 稿子） */
 .ic.web { background: color-mix(in srgb, var(--info) 14%, var(--surf)); color: var(--info); }
 .ic.calc { background: color-mix(in srgb, var(--tc-purple) 14%, var(--surf)); color: var(--tc-purple); }
+/* 带着的图片（需求-1.x 第 42.6 节）：输入框下面一排小图 */
+.qpics { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 2px 16px 10px 58px; }
+.qpic { position: relative; display: block; width: 64px; height: 44px; border-radius: var(--r-sm); overflow: hidden; border: 1px solid var(--line); background: var(--surf-2); }
+.qpic img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.qpic button { position: absolute; top: 2px; right: 2px; display: grid; place-items: center; width: 18px; height: 18px; padding: 0; border: 0; border-radius: 50%; background: rgb(0 0 0 / .55); color: #fff; opacity: 0; }
+.qpic:hover button { opacity: 1; }
+.qpic button .lucide { width: 12px; height: 12px; }
+.qpicnote { color: var(--ink-3); font-size: calc(12px * var(--fs)); }
+/* 搜文件（需求-1.x 第 21 节）：文件的图标、结果上面那行「用的是哪种」 */
+.ic.file { background: color-mix(in srgb, var(--tc-teal) 14%, var(--surf)); color: var(--tc-teal); }
+.fhead { display: flex; align-items: center; gap: 6px; padding: 8px 16px 2px; color: var(--ink-3); font-size: calc(12px * var(--fs)); }
+.fhead .lucide { width: 13px; height: 13px; flex: none; }
+.fbtn { padding: 0; border: 0; background: none; color: var(--accent-ink); font: inherit; cursor: pointer; }
+.fbtn:hover { text-decoration: underline; }
 .r.big { min-height: 58px; }
 .r.big .t { font-size: calc(20px * var(--fs)); font-weight: 700; font-variant-numeric: tabular-nums; }
 /* 笔记分类：style="--c: var(--tc-amber)" */

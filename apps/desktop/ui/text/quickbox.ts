@@ -46,6 +46,29 @@ export const T = {
 
   // ? 开头搜索
   searchHint: "打要找的字，笔记和提醒一起搜",
+  // 带着的图片（需求-1.x 第 42.6 节）
+  picName: "截图",
+  picDel: "不要这张图",
+  picNote: "回车时图片放进一条笔记；拆出提醒的，笔记跟着提醒",
+  picFull: (n: number) => `最多带 ${n} 张图`,
+  picSame: "这张图已经贴过了",
+  picOnly: "存成笔记",
+  picOnlySub: "还没写字：图片存成一条笔记；写一句带时间的话，就是提醒加上这条带图的笔记",
+  // 搜文件（需求-1.x 第 21 节）
+  files: "搜文件",
+  fileHint: "打文件名，比如「f 合同」；用 Everything 时也能写 *.pdf、ext:docx 合同",
+  fileNone: "没找到这个名字的文件",
+  fileEverything: "用的是 Everything",
+  fileIndex: "用的是 Windows 搜索索引，只搜用户文件夹里的",
+  fileOff: "Windows 搜索服务关着，搜不了文件",
+  fileAll: "搜整台电脑：一键开启",
+  fileIdle: "Everything 没在运行",
+  fileIdleGo: "打开 Everything",
+  fileFolder: "文件夹",
+  fileCopied: (name: string) => `复制好了「${name}」的路径`,
+  fileNoted: (name: string) => `「${name}」放进笔记本了`,
+  filePinned: (name: string) => `「${name}」放进常用了`,
+  fileFail: (why: string) => `没成：${why}`,
   searching: "正在找…",
   notFound: (mascot: boolean) => (mascot ? "没找到呀，换个说法试试？" : "没有找到，换个说法试试。"),
 
@@ -70,6 +93,8 @@ export const T = {
     webGo: "搜索",
     webHome: "打开首页",
     webWhere: "关键字在 设置 → 快捷框 里改",
+    filePrefix: "开头搜文件",
+    copyPath: "复制路径",
   },
 
   // 记的时候
@@ -99,6 +124,7 @@ export const T = {
     unpin: "从常用里拿掉",
     alias: "起个别名…",
     hide: "不在这里显示",
+    toNote: "放进笔记本",
   },
   aliasLabel: "起个短名字，打它就是这个",
   aliasEg: (eg: string) => `比如 ${eg}`,

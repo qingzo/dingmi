@@ -7,7 +7,7 @@ import { api, errText, type Device, type Note, type Reminder, type ReminderActio
 import { hasTime, parseLocal } from "../lib/parse";
 import { icon } from "@shared/icons";
 import { cat, type CatMood } from "@shared/mascot";
-import { splitSubs, subsLabel } from "@shared/md";
+import { attachmentSrc, setAttachmentDir, splitSubs, subsLabel } from "@shared/md";
 import { $, addDays, esc, fireAt, fmtDT, isRecurring, parseDT, repeatLabel, setTags, tagDef, tagHtml } from "@shared/util";
 import { ring } from "../lib/sound";
 import { remindText as T, whenFull, whenPast, whenShort } from "../text/cards";
@@ -96,7 +96,7 @@ function renderCard(r: Reminder) {
       <div class="title">${esc(r.title)}</div>${detailHtml(r.detail)}</div>
       ${next.length ? `<span class="more">${T.more(next.length)}</span>` : ""}</div>
     ${meta ? `<div class="meta">${meta}</div>` : ""}
-    ${note ? `<button class="link" data-note="${note.id}">${icon("notebook-pen")}<span>${esc(note.title || "")}</span><small>${T.openNote}</small></button>` : ""}
+    ${note ? `<button class="link" data-note="${note.id}">${icon("notebook-pen")}<span>${esc(note.title || "")}</span><small>${T.openNote}</small></button>${picsHtml(note)}` : ""}
     <div class="acts">
       <button class="btn pri" data-act="done">${icon("check")}${rec ? T.doneOnce : T.done}</button>
       <button class="btn" data-act="snooze">${T.snooze(snoozeMin)}</button>
@@ -295,6 +295,12 @@ function playRing() {
 card.addEventListener("pointerdown", () => stopRing());
 window.addEventListener("keydown", () => stopRing());
 
+/** 关联笔记里的图片（需求-1.x 第 42.6 节）：卡片上放前三张小图，点了打开笔记 */
+function picsHtml(n: Note): string {
+  const files = [...n.body.matchAll(/!\[[^\]]*\]\(att:([\w.-]+)\)/g)].map((x) => x[1]).slice(0, 3);
+  return files.length ? `<div class="cpics">${files.map((f) => `<img src="${attachmentSrc(f)}" alt="" data-note="${n.id}">`).join("")}</div>` : "";
+}
+
 /** 备注：文字照原样，子项列出来、标出勾了几个（需求-1.x 第 42.1 节）；卡片上只看，勾要到主窗口里 */
 function detailHtml(detail: string): string {
   const { text, subs } = splitSubs(detail);
@@ -315,7 +321,8 @@ card.addEventListener("click", async (e) => {
   const quick = el.closest<HTMLElement>("[data-until]");
   if (quick) return act("snooze_to", quick.dataset.until);
   const note = el.closest<HTMLElement>("[data-note]");
-  if (note) return api.openNoteWindow(Number(note.dataset.note));
+  // 到主窗口里「只看」：图片排好了显示（单独的笔记窗口是写 Markdown 的，图片是一行字，需求-1.x 第 42.6 节）
+  if (note) return api.openMainNav("notes", Number(note.dataset.note));
   const all = el.closest<HTMLElement>("[data-all]");
   if (all) return act(all.dataset.all as ReminderAction, undefined, (mode === "held" ? showing : queue).map((r) => r.id));
   const one = el.closest<HTMLElement>("[data-done], [data-later]");
@@ -358,6 +365,7 @@ listen("ring", () => {
   const [s, d] = await Promise.all([api.getSettings().catch(() => null), api.listDevices().catch(() => [])]);
   snoozeMin = s?.snooze_min ?? 10;
   sound = s?.sound ?? true;
+  setAttachmentDir(await api.attachmentDir().catch(() => ""));
   if (s) snd = { kind: s.sound_kind || "dingmi", urgent: s.sound_urgent ?? "", volume: s.sound_volume ?? 70, loop: !!s.sound_loop, file: s.sound_file ?? "" };
   setTags(s?.tags);
   devices = d;

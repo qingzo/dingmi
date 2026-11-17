@@ -33,18 +33,19 @@
 - **One hotkey, three jobs**: reminders, notes and launching apps all live in one box (`Alt + Space`), instead of three separate tools.
 - **Set reminders by just saying it**: "every month on the 15th, pay the credit card, remind me 2 days early", "every year on the 15th day of the 8th lunar month", "weekdays at 8:55". Parsed locally, works offline.
 - **Free, open source, no account**: install and go. No sign-up, no ads.
-- **Your data stays on your PC**: stored locally, exportable to Markdown at any time, backed up daily, with a recycle bin.
+- **Your data stays on your PC**: stored locally in a folder you choose, exportable to Markdown at any time, backed up daily, with a recycle bin.
 - **End-to-end encrypted sync**: across PCs and your phone via a cloud-drive folder, your own server, or the official paid service. Content is encrypted on your PC; servers only see ciphertext ([how it works, in Chinese](docs/加密和同步.md)).
 
 ## Features
 
-- **Quick box** (`Alt + Space`): one sentence becomes a reminder, a to-do or a note. Understands times, weekdays, the lunar calendar, "remind me N days early", several events in one sentence. Select text first and it's brought in automatically.
-- **Reminder cards** slide in from the bottom-right corner with a chime: done, 10 minutes later, tomorrow, snooze until… They stay until you deal with them. Pick from several built-in sounds (per category, or a separate one for urgent reminders) or use your own sound file.
+- **Quick box** (`Alt + Space`): one sentence becomes a reminder, a to-do or a note. Understands times, weekdays, the lunar calendar, "remind me N days early", several events in one sentence. Select text first and it's brought in automatically; paste a screenshot and it's saved along with the sentence.
+- **Reminder cards** slide in from the bottom-right corner with a chime: done, 10 minutes later, tomorrow, snooze until… They stay until you deal with them, and show thumbnails of any attached images. Pick from several built-in sounds (per category, or a separate one for urgent reminders) or use your own sound file.
 - **Focus mode** turns on automatically when something is full-screen and holds non-urgent reminders until you're done.
 - **To-dos**: things without a time get their own list, together with the unchecked `- [ ]` items from your notes. Add a time later and it becomes a reminder. Break a task into subtasks and tick them off one by one.
 - **Notebook**: Markdown, images, files, tables; to-dos in notes can get reminders too. `Ctrl + Alt + N` opens a small window for quick notes.
-- **Launcher**: pinyin and initials (`wx` finds 微信 WeChat), recent apps and pinned apps, search your notes with `?`, a calculator, web keywords.
+- **Launcher**: pinyin and initials (`wx` finds 微信 WeChat), recent apps and pinned apps, search your notes with `?`, find files on your PC with `f` + space (Windows Search index by default, or turn on whole-disk search with [Everything](https://www.voidtools.com/) in one click), a calculator, web keywords.
 - **Desktop widget**, **morning briefing** and **evening wrap-up**.
+- **Choose where your data lives**: move it off the C: drive from Settings → Data; Dingmi moves it for you on restart.
 - **Phone**: with sync, view reminders and notes and send things to your PC from the phone's browser. No app to install.
 - **Optional AI**: add your own DeepSeek API key for better time parsing and one-click note tidying. Everything works without it.
 

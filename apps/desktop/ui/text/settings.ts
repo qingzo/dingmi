@@ -62,6 +62,7 @@ export const ROWS = {
     sources: { name: "能找到哪些程序", sub: "开始菜单、商店应用、桌面快捷方式", also: ["启动器", "程序", "软件", "搜不到", "重新找"] },
     custom: { name: "自己加的", sub: "文件夹、文件、网址", also: ["添加", "网址", "文件夹", "书签"] },
     aliases: { name: "别名和不显示的", sub: "在快捷框里右键一个程序加的", also: ["别名", "隐藏", "不显示"] },
+    file_search: { name: "文件搜索", sub: "快捷框里打 f 加空格再打文件名", also: ["文件", "搜文件", "everything", "全盘", "找文件", "搜索"] },
     pin_rows: { name: "最近用过显示几排", sub: "快捷框空着时上面那几排最近用过的程序，一排 8 个；常用里放的另外在下面全显示", also: ["常用", "最近", "两排", "三排", "图标", "收藏", "固定"] },
     flash_space: {
       name: "空格启动",
@@ -115,7 +116,7 @@ export const ROWS = {
     export: { name: "导出全部", sub: "提醒、笔记、图片和文件打包成一个 zip；里面是明文，注意保管", also: ["导出", "备份", "zip", "markdown", "迁移"] },
     restore: { name: "从导出包恢复", sub: "换电脑、重装后用；开着同步时只能合并", also: ["导入", "恢复", "迁移", "换电脑"] },
     autobackup: { name: "本机自动备份", sub: "每天一份，留 7 天", also: ["备份", "自动备份"] },
-    path: { name: "数据文件在哪", also: ["数据库", "位置", "文件夹", "路径"] },
+    data_dir: { name: "数据放在哪", sub: "提醒、笔记、图片、备份都在这个文件夹里；可以换到别的盘", also: ["数据库", "位置", "文件夹", "路径", "c盘", "d盘", "换盘", "搬家", "迁移", "存储位置"] },
   },
   about: {
     update: { name: "检查更新", also: ["更新", "新版本", "升级", "版本"] },
@@ -850,7 +851,59 @@ export const TS = {
 };
 
 /** 导出、恢复的弹窗 */
+// 搜文件、一键开启全盘搜索（需求-1.x 第 21、42.7 节）
+export const TF = {
+  how: "快捷框里打 f 加空格再打文件名。现在用的是：",
+  engine: {
+    everything: "你装的 Everything，整台电脑都能搜",
+    mine: "叮咪带的 Everything，整台电脑都能搜",
+    index: "Windows 搜索索引，只搜用户文件夹里的",
+    none: "Windows 搜索服务关着，现在搜不了",
+  } as Record<string, string>,
+  on: "一键开启全盘搜索",
+  off: "关掉全盘搜索",
+  onTitle: "开启全盘搜索",
+  onWhy: "叮咪会从 dingmi.app 下载 Everything（一个免费、开源的文件搜索工具，2 MB 左右），核对过是官方的那一份再用。开好以后，快捷框里打 f 加空格，整台电脑的文件几乎马上就能搜到。",
+  onCost: [
+    "要管理员确认一次：Everything 读整块硬盘要装一个服务。公司电脑没有管理员权限的话开不了，照旧用 Windows 搜索索引。",
+    "后台多一个 Everything 程序，占几十 MB 内存，文件越多占得越多；叮咪退出时它也退出。",
+    "这台电脑上别的 Windows 账号也能列出全盘的文件名（打不开文件，只能看到名字）。",
+    "360 这类安全软件可能问「是否允许安装服务」，点允许就行。",
+  ],
+  onGo: "开启",
+  onBusy: "正在下载、开启…",
+  onBusyFile: "正在核对、开启…",
+  manual: "可以自己下载：点下面任意一个（是同一个文件），用浏览器下好。",
+  dlFrom: ["从 dingmi.app 下载", "从 voidtools 官网下载"],
+  manualFile: "文件名是 Everything-1.4.1.1032.x64.zip（2 MB 左右）。下好以后点「选下载好的文件」，叮咪照样核对过是官方的那一份才用。",
+  retry: "再下载一次",
+  pickFile: "选下载好的文件",
+  onDone: "开好了，Everything 要花一两分钟把文件都过一遍",
+  offTitle: "关掉全盘搜索？",
+  offWhy: "停掉叮咪带的 Everything，删掉它的服务（要管理员确认一次）和文件，之后用 Windows 搜索索引搜文件。",
+  offBusy: "正在关掉…",
+  offDone: "关掉了",
+};
+
 export const TD = {
+  // 数据放在哪（需求-1.x 第 42.8 节）
+  ddOpen: "打开",
+  ddChange: "换一个文件夹",
+  ddBack: "搬回默认位置",
+  ddDefault: "（默认位置）",
+  ddMoveTitle: "把数据搬到这里？",
+  ddMoveText: (dir: string, mb: string) => `要搬到：${dir}\n现在的数据一共 ${mb}。点「搬过去」以后叮咪先关掉，搬好了自己重新打开，数据多的话要等一会儿。原来那里搬完就删掉，只留一个小文件记着搬到哪了。`,
+  ddBackTitle: "把数据搬回默认位置？",
+  ddExistTitle: "那里已经有叮咪的数据",
+  ddExistText: (dir: string, cur: string) => `${dir} 里已经有叮咪的数据（比如重装系统前用的）。换过去以后用那里的提醒和笔记；现在这份不动，还留在 ${cur}。`,
+  ddExistWarn: "开着同步的话，两份数据不一样时会合到一起",
+  ddKeys: "同步不受影响：同步的钥匙存在这台电脑的 Windows 凭据管理器里，不在数据文件夹里。",
+  ddGo: "搬过去",
+  ddGoBack: "搬回去",
+  ddSwitch: "换过去",
+  ddBusy: "正在关掉叮咪…",
+  ddCant: "这里不行",
+
   // 导出诊断信息（需求-0.3 第 12 节）
   dgTitle: "导出诊断信息",
   dgWhy: "出了问题时，把这个文件发给作者，方便找原因。叮咪自己不往外发任何东西。下面这几样会放进去，可以先打开看看：",

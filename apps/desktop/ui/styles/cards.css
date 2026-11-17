@@ -39,6 +39,9 @@ html, body { height: auto; background: transparent; overflow: hidden; }
 .when small { font-weight: 400; color: var(--ink-3); font-size: calc(11.5px * var(--fs)); }
 .title { font-size: calc(16px * var(--fs)); font-weight: 700; line-height: 1.35; margin-top: 1px; overflow-wrap: anywhere; }
 .detail { font-size: calc(12.5px * var(--fs)); color: var(--ink-2); overflow-wrap: anywhere; white-space: pre-line; }
+/* 关联笔记里的图片（需求-1.x 第 42.6 节） */
+.cpics { display: flex; gap: 6px; margin-top: 6px; }
+.cpics img { width: 84px; height: 56px; object-fit: cover; border-radius: var(--r-sm); border: 1px solid var(--line); cursor: pointer; }
 /* 子项（需求-1.x 第 42.1 节）：卡片上只看 */
 .subs { display: grid; gap: 2px; margin-top: 4px; font-size: calc(12.5px * var(--fs)); color: var(--ink-2); }
 .subs .subh { color: var(--ink-3); font-size: calc(11.5px * var(--fs)); font-variant-numeric: tabular-nums; }

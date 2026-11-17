@@ -411,7 +411,7 @@ function showDeleteServer() {
     `<h4>${TS.delTitle}</h4><ul class="del-list">${TS.delItems.map((t) => `<li>${esc(t)}</li>`).join("")}</ul>
     <label class="fl"><span>${TS.delPw}</span>${pwField("del-pw", "current-password")}</label>
     <p class="fhelp err" id="del-err"></p>
-    <div class="acts"><button type="button" class="btn" data-close>${T.cancel}</button><button class="btn pri danger" id="del-go">${TS.delGo}</button></div>`,
+    <div class="acts"><button type="button" class="btn" data-close>${T.cancel}</button><button class="btn danger solid" id="del-go">${TS.delGo}</button></div>`,
     { form: "del" },
   );
   $<HTMLFormElement>("#del").onsubmit = async (e) => {

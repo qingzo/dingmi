@@ -155,6 +155,15 @@ fn relaunch(app: &AppHandle, open_main: bool) {
     std::process::exit(0);
 }
 
+/// 马上重启叮咪（换了数据位置）：不管刚启动了多久，重启后打开主窗口
+pub fn restart_now(app: &AppHandle) {
+    let Ok(exe) = std::env::current_exe() else { return };
+    if std::process::Command::new(exe).arg(RELAUNCH).spawn().is_ok() {
+        app.cleanup_before_exit();
+        std::process::exit(0);
+    }
+}
+
 /// 一块屏幕的工作区（去掉任务栏），物理像素：(x, y, w, h, scale)
 fn area_of(m: &Monitor) -> (f64, f64, f64, f64, f64) {
     let wa = m.work_area();

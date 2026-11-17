@@ -339,6 +339,13 @@ button.tag { border: 0; cursor: pointer; }
 .repbox .chipsel { height: 26px; padding: 0 8px; }
 .swrow { display: flex; align-items: center; justify-content: space-between; gap: 12px; font-size: calc(13px * var(--fs)); }
 .swrow small { display: block; color: var(--ink-3); font-size: calc(11.5px * var(--fs)); }
+/* 抽屉里的图片（需求-1.x 第 42.6 节） */
+.dpics { display: flex; flex-wrap: wrap; gap: 6px; }
+.dpics:empty { display: none; }
+.dpics img { width: 72px; height: 52px; object-fit: cover; border-radius: var(--r-sm); border: 1px solid var(--line); cursor: pointer; display: block; }
+.dpic { position: relative; }
+.dpic button { position: absolute; top: 2px; right: 2px; display: grid; place-items: center; width: 18px; height: 18px; padding: 0; border: 0; border-radius: 50%; background: rgb(0 0 0 / .55); color: #fff; }
+.dpic button .lucide { width: 12px; height: 12px; }
 /* 子项（需求-1.x 第 42.1 节）：圆圈勾、可以直接改的字、删掉 */
 .fl .subn { margin-left: 6px; font-style: normal; color: var(--ink-3); }
 .subs { display: grid; gap: 2px; }

@@ -1,5 +1,5 @@
 // 一句话直接保存：快捷框和桌面组件共用。一边打字一边预览会被理解成什么，回车后由 AI（或本地规则）拆开存好
-import { api, type Device, type Note, type Reminder } from "./api";
+import { api, newNote, type Device, type Note, type Reminder } from "./api";
 import { guessNoteCat, parseLocal, saveParsed, smartParse, type ParsedItem, type ParsedNote } from "./parse";
 import { friendlyDay, friendlyDT, isRecurring, NO_DATE, repeatLabel } from "@shared/util";
 
@@ -29,6 +29,20 @@ export function noteOnly(v: string): ParsedNote {
   return { type: "note", title: first.length > 20 ? first.slice(0, 20) + "…" : first, body: v, tag: guessNoteCat(v), link: false };
 }
 
+/** 一起带着的图片（快捷框里粘贴的截图、截图记下来的那张，需求-1.x 第 42.6 节） */
+export interface Pic {
+  bytes: Uint8Array;
+  mime: string;
+  name: string;
+}
+
+/** 认出是不是同一张图（粘了两次）：大小 + 内容算个指纹（FNV-1a） */
+export function picKey(b: Uint8Array): string {
+  let h = 0x811c9dc5;
+  for (let i = 0; i < b.length; i++) h = Math.imul(h ^ b[i], 0x01000193);
+  return `${b.length}:${(h >>> 0).toString(16)}`;
+}
+
 export interface Saved {
   /** 拆出来的条目 */
   items: ParsedItem[];
@@ -39,11 +53,25 @@ export interface Saved {
   aiFailed: boolean;
 }
 
-/** 拆开存好；asNote 时只记成笔记 */
-export async function quickSaveAll(v: string, useAI: boolean, devices: Device[], asNote = false): Promise<Saved> {
+/** 拆开存好；asNote 时只记成笔记；带着图片的放进一条笔记 */
+export async function quickSaveAll(v: string, useAI: boolean, devices: Device[], asNote = false, pics: Pic[] = []): Promise<Saved> {
   const res = asNote ? { items: [noteOnly(v)], error: undefined } : await smartParse(v, useAI, 12000, devices);
   const saved = await saveParsed(res.items);
+  if (pics.length) await attachPics(saved, v, pics);
   return { items: res.items, ...saved, aiFailed: useAI && !asNote && !!res.error };
+}
+
+/** 图片放进笔记（需求-1.x 第 42.6 节）：拆出了笔记就放进第一条；只拆出了提醒，就新建一条笔记（标题同第一条提醒，正文是原话）关联它 */
+async function attachPics(saved: { reminders: Reminder[]; notes: Note[] }, v: string, pics: Pic[]) {
+  let note = saved.notes[0];
+  if (!note) {
+    const r = saved.reminders[0];
+    note = await api.saveNote(newNote({ title: r?.title ?? v.split("\n")[0].slice(0, 20), body: v, reminder_id: r?.id ?? null }));
+    saved.notes.push(note);
+  }
+  const md: string[] = [];
+  for (const p of pics) md.push(`![](att:${await api.saveAttachment(p.bytes, p.mime, note.uid, p.name)})`);
+  saved.notes[saved.notes.indexOf(note)] = await api.saveNote({ ...note, body: [note.body.trim(), md.join("\n")].filter(Boolean).join("\n\n") });
 }
 
 /** 拆开存好，回存了哪些 */

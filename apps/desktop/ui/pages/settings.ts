@@ -3,7 +3,7 @@
 import "../styles/settings.css";
 import { listen } from "@tauri-apps/api/event";
 import { getVersion } from "@tauri-apps/api/app";
-import { api, errText, type DiagPart, type WebKey, type Checklist, type Exported, type ExportProgress, type LaunchConfig, type LaunchItem, type LookStyle, type Restored, type RestorePeek, type Settings, type SyncStatus, type TagDef, type TermsDoc, type TermsView, type UpdateStatus } from "../lib/api";
+import { api, errText, type DataDirCheck, type DiagPart, type EverythingStatus, type WebKey, type Checklist, type Exported, type ExportProgress, type LaunchConfig, type LaunchItem, type LookStyle, type Restored, type RestorePeek, type Settings, type SyncStatus, type TagDef, type TermsDoc, type TermsView, type UpdateStatus } from "../lib/api";
 import { mascotDefault, mascotOn, previewLook } from "../lib/look";
 import { iconHtml, visible } from "../lib/launch";
 import { checkKey } from "../lib/webkey";
@@ -15,7 +15,7 @@ import { $, $$, esc, hotkeyFromEvent, hotkeyText, noteCatList, setNoteCats, setT
 import { armed, hideModal, hooks, S } from "./main-state";
 import { busy, dialog, h5, head, hkMsg, lockDialog, note, row, rows, saveSettings, select, tog } from "./settings-ui";
 import { backupTime, renderSync, settingsSyncChanged, syncBad, syncClick, syncInput, syncPageHtml } from "./settings-sync";
-import { PAGES, ROWS, T, TD, type PageId } from "../text/settings";
+import { PAGES, ROWS, T, TD, TF, type PageId } from "../text/settings";
 
 const SEARCH_ROWS = rowsOf(ROWS);
 const pageName = (p: string) => PAGES.find(([k]) => k === p)?.[2] ?? "";
@@ -602,7 +602,7 @@ let quickOpen: "" | "custom" | "aliases" = "";
 
 async function quickHtml(s: Settings) {
   const Q = ROWS.quick;
-  const items = await api.launcherList().catch((): LaunchItem[] => []);
+  const [items, ev] = await Promise.all([api.launcherList().catch((): LaunchItem[] => []), api.everythingStatus().catch(() => null)]);
   const c = s.launcher;
   const byId = new Map(items.map((i) => [i.id, i]));
   const del = (attr: string, i: number, label = T.remove, danger = true) => `<button class="btn sm ghost${danger ? " danger" : ""}" ${attr}="${i}">${label}</button>`;
@@ -639,9 +639,75 @@ async function quickHtml(s: Settings) {
       row("custom", Q.custom, manage("custom"), { local: true, sub: esc(T.customSub(c.custom.length)) }) + custom,
       row("aliases", Q.aliases, manage("aliases"), { local: true, sub: esc(T.aliasSub(c.aliases.length, c.hidden.length)) }) + aliases,
     )}
-    ${rows(row("calc", Q.calc, tog("calc", Q.calc.name)))}
+    ${rows(row("calc", Q.calc, tog("calc", Q.calc.name)), ev ? fileRow(ev) : "")}
     ${h5(Q.web_keys.name, { id: "web_keys" })}<p class="hint">${esc(T.wkHint)}</p>
     <div class="srows" id="wk-rows">${webKeysHtml(s.web_keys)}</div><p class="fhelp err" id="wk-msg"></p>`;
+}
+
+// ---------- 搜文件、一键开启全盘搜索（需求-1.x 第 21、42.7 节） ----------
+
+/** 「文件搜索」这一行：现在用的是哪种；没装 Everything 的给「一键开启」，开了的给「关掉」 */
+function fileRow(ev: EverythingStatus): string {
+  const Q = ROWS.quick;
+  const now = TF.engine[ev.engine || "none"];
+  const ctl = ev.theirs ? "" : ev.ours ? `<button class="btn sm ghost danger" id="s-evoff">${TF.off}</button>` : `<button class="btn sm" id="s-evon">${TF.on}</button>`;
+  return row("file_search", Q.file_search, ctl, { local: true, sub: esc(`${TF.how}${now}`) });
+}
+
+/** 开之前说清楚：要管理员确认一次、后台多一个程序、别的账号也能列出文件名、杀毒软件可能问。
+ *  下载不成功：给两个地址让用户自己下（同一个文件），下好了选它，一样核对指纹 */
+function everythingOn() {
+  dialog(`<h4>${TF.onTitle}</h4><div id="ev-intro"><p>${esc(TF.onWhy)}</p><ul class="plain">${TF.onCost.map((x) => `<li>${esc(x)}</li>`).join("")}</ul></div>
+    <p class="fhelp err" id="ev-err"></p><div id="ev-manual" hidden></div>
+    <div class="acts"><button class="btn" data-close>${T.cancel}</button><button class="btn pri" id="ev-go">${TF.onGo}</button></div>`);
+  const go = async (b: HTMLButtonElement, fromFile: boolean) => {
+    $("#ev-err").textContent = "";
+    lockDialog(true);
+    const err = await busy(b, fromFile ? TF.onBusyFile : TF.onBusy, () => api.everythingEnable(fromFile));
+    lockDialog(false);
+    // 选文件时点了取消：什么都不说
+    if (err === "") return;
+    if (err) {
+      $("#ev-err").textContent = err;
+      const st = await api.everythingStatus().catch(() => null);
+      // 还没拿到 Everything（下载、核对没过）：给自己下载的地址
+      if (st && !st.ours) showManual(st.urls);
+      return;
+    }
+    hideModal();
+    toast(TF.onDone);
+    await renderSettings();
+  };
+  // 下载不成功：前面的说明收起来，给两个下载按钮（同一个文件），底下「再下载一次」「选下载好的文件」
+  const showManual = (urls: string[]) => {
+    $("#ev-intro").hidden = true;
+    const box = $("#ev-manual");
+    if (!box.hidden) return;
+    box.hidden = false;
+    box.innerHTML = `<p>${esc(TF.manual)}</p><div class="ev-dl">${urls.map((u, i) => `<button type="button" class="btn sm" data-evurl="${esc(u)}" title="${esc(u)}">${icon("download")}${TF.dlFrom[i]}</button>`).join("")}</div><p class="fhelp">${esc(TF.manualFile)}</p>`;
+    box.querySelectorAll<HTMLElement>("[data-evurl]").forEach((x) => (x.onclick = () => void api.openUrl(x.dataset.evurl!).catch((err) => toast(errText(err)))));
+    const goBtn = $<HTMLButtonElement>("#ev-go");
+    goBtn.textContent = TF.retry;
+    goBtn.classList.remove("pri");
+    goBtn.insertAdjacentHTML("afterend", `<button class="btn pri" id="ev-file">${TF.pickFile}</button>`);
+    $<HTMLButtonElement>("#ev-file").onclick = (e) => void go(e.currentTarget as HTMLButtonElement, true);
+  };
+  $<HTMLButtonElement>("#ev-go").onclick = (e) => void go(e.currentTarget as HTMLButtonElement, false);
+}
+
+function everythingOff() {
+  dialog(`<h4>${TF.offTitle}</h4><p>${esc(TF.offWhy)}</p><p class="fhelp err" id="ev-err"></p>
+    <div class="acts"><button class="btn" data-close>${T.cancel}</button><button class="btn danger solid" id="ev-go">${TF.off}</button></div>`);
+  $<HTMLButtonElement>("#ev-go").onclick = async (e) => {
+    const b = e.currentTarget as HTMLButtonElement;
+    lockDialog(true);
+    const err = await busy(b, TF.offBusy, () => api.everythingDisable());
+    lockDialog(false);
+    if (err) return void ($("#ev-err").textContent = err);
+    hideModal();
+    toast(TF.offDone);
+    await renderSettings();
+  };
 }
 
 // ---------- 网页关键字（需求-0.3 第 10.2 节）：每行 关键字、名字和网址、改；点「改」原地变成三个输入框 ----------
@@ -902,9 +968,10 @@ async function testAi(b: HTMLButtonElement) {
 
 async function dataHtml() {
   const D = ROWS.data;
-  const [path, local] = await Promise.all([api.dataPath().catch(() => ""), api.localBackups().catch(() => null)]);
+  const [info, local] = await Promise.all([api.dataDirInfo().catch(() => null), api.localBackups().catch(() => null)]);
   const trashN = S.trash.reminders.length + S.trash.notes.length;
   return `${head(pageName("data"), T.hint.data as string)}
+    ${info?.notice ? note(/没搬成/.test(info.notice) ? "err" : "ok", /没搬成/.test(info.notice) ? "circle-alert" : "circle-check", "", esc(info.notice)) : ""}
     ${rows(
       row("trash", D.trash, `<button class="btn sm" id="s-trash">${T.open}</button>`, { sub: esc(T.trashSub(trashN)) }),
       row("export", D.export, `<button class="btn sm" id="s-export">${T.exportBtn}</button>`),
@@ -912,8 +979,42 @@ async function dataHtml() {
       row("autobackup", D.autobackup, local ? `<button class="btn sm ghost" id="s-bkdir" data-dir="${esc(local.dir)}">${icon("folder-open")}${T.openDir}</button>` : "", {
         sub: esc(local?.last ? T.autoSub(backupTime(local.last)) : T.autoNone),
       }),
-      row("path", D.path, `<button class="btn sm ghost" id="s-path" data-path="${esc(path)}">${T.open}</button>`, { sub: `<span class="path">${esc(path)}</span>` }),
+      info
+        ? row(
+            "data_dir",
+            D.data_dir,
+            `<button class="btn sm ghost" id="s-path" data-path="${esc(`${info.dir}\\dingmi.db`)}">${TD.ddOpen}</button>${info.custom ? `<button class="btn sm ghost" id="s-ddback">${TD.ddBack}</button>` : ""}<button class="btn sm" id="s-ddpick">${TD.ddChange}</button>`,
+            { local: true, sub: `<span class="path">${esc(info.dir)}${info.custom ? "" : esc(TD.ddDefault)}</span>` },
+          )
+        : "",
     )}`;
+}
+
+/** 换数据位置（需求-1.x 第 42.8 节）：选好文件夹先看能不能放，说清楚会怎样，点了才记下、重新打开叮咪去搬 */
+async function pickDataDir(check: Promise<DataDirCheck | null>, back = false) {
+  let c: DataDirCheck | null;
+  try {
+    c = await check;
+  } catch (err) {
+    return toast(errText(err));
+  }
+  if (!c) return;
+  if (!c.kind) return dialog(`<h4>${TD.ddCant}</h4><p>${esc(c.msg)}</p><div class="acts"><button class="btn pri" data-close>${T.close}</button></div>`);
+  const cur = (await api.dataDirInfo().catch(() => null))?.dir ?? "";
+  const mb = c.size < 1048576 ? "不到 1 MB" : `${(c.size / 1048576).toFixed(0)} MB`;
+  const exist = c.kind === "dingmi";
+  const title = exist ? TD.ddExistTitle : back ? TD.ddBackTitle : TD.ddMoveTitle;
+  const text = exist ? TD.ddExistText(c.dir, cur) : TD.ddMoveText(c.dir, mb);
+  dialog(`<h4>${title}</h4><p class="pre">${esc(text)}</p>${exist ? note("warn", "triangle-alert", "", esc(TD.ddExistWarn)) : ""}<p class="fhelp">${esc(TD.ddKeys)}</p><p class="fhelp err" id="dd-err"></p>
+    <div class="acts"><button class="btn" data-close>${T.cancel}</button><button class="btn pri" id="dd-go">${exist ? TD.ddSwitch : back ? TD.ddGoBack : TD.ddGo}</button></div>`);
+  $<HTMLButtonElement>("#dd-go").onclick = async (e) => {
+    const b = e.currentTarget as HTMLButtonElement;
+    lockDialog(true);
+    // 成功的话叮咪重新打开，这里不会回来
+    const err = await busy(b, TD.ddBusy, () => api.dataDirMove(c!.pick, c!.dir));
+    lockDialog(false);
+    if (err) $("#dd-err").textContent = err;
+  };
 }
 
 /** 导出全部：先说清楚里面是明文、存到哪；导出时显示进度，导完可以打开所在文件夹 */
@@ -1284,6 +1385,14 @@ body.addEventListener("click", async (e) => {
       return void api.openPath(b.dataset.dir ?? "").catch((err) => toast(errText(err)));
     case "s-path":
       return void api.revealPath(b.dataset.path ?? "").catch((err) => toast(errText(err)));
+    case "s-evon":
+      return everythingOn();
+    case "s-evoff":
+      return everythingOff();
+    case "s-ddpick":
+      return void pickDataDir(api.dataDirPick());
+    case "s-ddback":
+      return void pickDataDir(api.dataDirHomeCheck(), true);
     case "s-onboard":
       return void api.onboardOpen().catch((err) => toast(errText(err)));
     case "s-lic":

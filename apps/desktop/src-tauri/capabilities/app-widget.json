@@ -24,6 +24,7 @@
     "allow-open-window",
     "allow-pick-path",
     "allow-reminder-action",
+    "allow-save-attachment",
     "allow-save-note",
     "allow-save-reminder",
     "allow-trash-action",

@@ -3,13 +3,13 @@ import "../styles/quickbox.css";
 import { mascotOn } from "../lib/look";
 import { listen } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
-import { api, errText, type Device, type LaunchConfig, type LaunchItem, type LaunchStats, type Note, type Reminder, type Settings } from "../lib/api";
+import { api, errText, type Device, type FileFound, type FileHit, type LaunchConfig, type LaunchItem, type LaunchStats, type Note, type Reminder, type Settings } from "../lib/api";
 import { EMPTY_STATS, emptyRows, iconHtml, kindText, markHit, rank, shortName, visible, whereText, type Hit as AppHit } from "../lib/launch";
 import { parseLocal, type ParsedItem, type ParsedReminder } from "../lib/parse";
 import { calc, type Calc } from "../lib/calc";
 import { webHit, type WebHit } from "../lib/webkey";
 import { spaceOpens } from "../lib/flashspace";
-import { quickSaveAll, undoSaved, type Saved } from "../lib/quick";
+import { picKey, quickSaveAll, undoSaved, type Pic, type Saved } from "../lib/quick";
 import { highlight, snippet } from "@shared/md";
 import { icon, type IconName } from "@shared/icons";
 import { cat, head } from "@shared/mascot";
@@ -31,6 +31,7 @@ const msg = $("#msg");
 const body = $("#body");
 const ft = $("#ft");
 const savedEl = $("#saved");
+const picsEl = $("#pics");
 const menu = $("#menu");
 let busy = false;
 let useAI = false;
@@ -73,7 +74,8 @@ type Row =
   | { kind: "rec" }
   | { kind: "only" }
   | { kind: "calc"; c: Calc }
-  | { kind: "web"; w: WebHit };
+  | { kind: "web"; w: WebHit }
+  | { kind: "file"; f: FileHit };
 let rows: Row[] = [];
 let sel = 0;
 /** 空着时：最近用过的在上、常用的在下（照 ZTools；见 launch.ts emptyRows），两块连起来放在 recents 里，Alt + 数字、data-r 都照它数；pinSel 是方向键选中的那个 */
@@ -94,6 +96,78 @@ let savedTimer = 0;
 let gen = 0;
 
 const searchText = (v: string) => (/^[?？]/.test(v) ? v.slice(1).trim() : null);
+/** 「f 加空格」开头搜文件（需求-1.x 第 21 节）：后面的字；不是搜文件时是 null */
+const fileText = (raw: string) => (/^f\s/i.test(raw) ? raw.slice(2).trim() : null);
+
+// ---------- 带着的图片（需求-1.x 第 42.6 节）：粘贴的截图、截图记下来的那张；回车时放进一条笔记 ----------
+
+let pics: { pic: Pic; url: string; key: string }[] = [];
+/** 点到别处收起时带着的图（和没写完的字一起），下次打开放回去 */
+let draftPics: typeof pics = [];
+const MAX_PICS = 4;
+
+function addPic(bytes: Uint8Array, mime: string) {
+  const key = picKey(bytes);
+  // 同一张图粘了两次（多按了一下 Ctrl + V）：只留一张
+  if (pics.some((p) => p.key === key)) return say(T.picSame);
+  if (pics.length >= MAX_PICS) return say(T.picFull(MAX_PICS), "err");
+  pics.push({ pic: { bytes, mime, name: T.picName }, url: URL.createObjectURL(new Blob([new Uint8Array(bytes)], { type: mime })), key });
+  paintPics();
+  render();
+}
+
+function clearPics() {
+  pics.forEach((p) => URL.revokeObjectURL(p.url));
+  pics = [];
+  paintPics();
+}
+
+function paintPics() {
+  picsEl.hidden = !pics.length;
+  picsEl.innerHTML = pics.length
+    ? pics.map((p, i) => `<span class="qpic"><img src="${p.url}" alt=""><button data-pdel="${i}" tabindex="-1" title="${esc(T.picDel)}" aria-label="${esc(T.picDel)}">${icon("x")}</button></span>`).join("") +
+      `<span class="qpicnote">${esc(T.picNote)}</span>`
+    : "";
+}
+
+// ---------- 搜文件 ----------
+
+/** 最近一次搜文件的结果（q 是搜的字） */
+let fileRes: { q: string; found: FileFound } | null = null;
+let fileTimer = 0;
+let fileGen = 0;
+
+/** 打字停一下再搜；后搜的结果回来了，前面的就不要了 */
+function findFiles(q: string) {
+  clearTimeout(fileTimer);
+  const g = ++fileGen;
+  fileTimer = window.setTimeout(async () => {
+    const found = await api.fileSearch(q).catch(() => null);
+    if (g !== fileGen || !found) return;
+    fileRes = { q, found };
+    if (fileText(inp.value) === q) render();
+  }, 150);
+}
+
+const sizeText = (n: number | null) => (n === null ? "" : n < 1024 ? `${n} B` : n < 1048576 ? `${Math.round(n / 1024)} KB` : `${(n / 1048576).toFixed(1)} MB`);
+const IMG = /\.(png|jpe?g|gif|webp|bmp|svg|heic)$/i;
+
+/** 结果上面一行：用的是哪种；没有 Everything 时给「一键开启」，装了没开着给「打开 Everything」 */
+function fileHead(f: FileFound | undefined): string {
+  if (!f || f.engine === "everything" || f.engine === "mine") return "";
+  const btn = (act: string, t: string) => `<button class="fbtn" data-fe="${act}" tabindex="-1">${esc(t)}</button>`;
+  const what = f.idle ? `${esc(T.fileIdle)} · ${btn("theirs", T.fileIdleGo)}` : `${esc(f.engine === "index" ? T.fileIndex : T.fileOff)} · ${btn("on", T.fileAll)}`;
+  return `<div class="fhead">${icon("info")}<span>${what}</span></div>`;
+}
+
+async function fileAct(h: FileHit, how: "open" | "dir") {
+  try {
+    await api.fileAct(h.path, how);
+    close();
+  } catch (err) {
+    say(T.fileFail(errText(err)), "err");
+  }
+}
 const shown = () => visible(items, cfg);
 const isRem = (x: ParsedItem): x is ParsedReminder => x.type === "reminder";
 
@@ -172,9 +246,17 @@ function rowHtml(row: Row, i: number, v: string, parsed: ParsedItem[]): string {
     const r = row.r;
     return line(i, ico("rem", isUndated(r) ? "circle-check" : isRecurring(r.repeat) ? "repeat" : "bell"), highlight(esc(r.title), hl), esc(`${isUndated(r) ? T.todo : T.reminder} · ${remWhen(r)}`), "", r.done ? " gone" : "");
   }
+  if (row.kind === "only" && pics.length && !v) return line(i, ico("note", "notebook-pen"), esc(T.picOnly), esc(T.picOnlySub));
   if (row.kind === "only") return line(i, ico("note", "notebook-pen"), esc(T.noteOnly), esc(T.noteOnlySub), "", "", "Tab");
   if (row.kind === "calc") return line(i, ico("calc", "calculator"), esc(row.c.value === null ? T.calcBad : `= ${row.c.shown}`), esc(row.c.expr), "", " big");
   if (row.kind === "web") return line(i, ico("web", "search"), esc(T.webSearch(row.w.k.name, row.w.q)), esc(T.webSub(row.w.q)));
+  if (row.kind === "file") {
+    const h = row.f;
+    const sub = [h.dir, h.folder ? T.fileFolder : sizeText(h.size), h.modified ?? ""].filter(Boolean).join(" · ");
+    const words = (fileText(v) ?? "").split(/\s+/).filter((w) => w && !/[*:?]/.test(w));
+    const name = words.reduce((html, w) => highlight(html, w), esc(h.name));
+    return line(i, ico("file", h.folder ? "folder" : IMG.test(h.name) ? "image" : "file-text"), name, esc(sub));
+  }
   return recHtml(i, v, parsed);
 }
 
@@ -197,11 +279,26 @@ function render() {
   closeMenu();
   const v = inp.value.trim();
   const q = searchText(v);
+  const fq = q === null ? fileText(inp.value) : null;
   // 「关键字 + 空格」：带着空格看，只打关键字时不算
-  const web = q === null ? webHit(inp.value, webKeys) : null;
-  const mode = q !== null ? `<span class="mode">${icon("search")}${esc(T.search)}</span>` : web ? `<span class="mode">${icon("globe")}${esc(web.k.name)}</span>` : "";
+  const web = q === null && fq === null ? webHit(inp.value, webKeys) : null;
+  const mode =
+    q !== null
+      ? `<span class="mode">${icon("search")}${esc(T.search)}</span>`
+      : fq !== null
+        ? `<span class="mode">${icon("folder")}${esc(T.files)}</span>`
+        : web
+          ? `<span class="mode">${icon("globe")}${esc(web.k.name)}</span>`
+          : "";
   right.innerHTML = `${mode}<button class="qset" id="qset" tabindex="-1" title="${esc(T.settings)}" aria-label="${esc(T.settings)}">${icon("settings")}</button>`;
   appFirst = false;
+  // 只有图片、还没写字：回车就存成一条带图的笔记
+  if (!v && pics.length) {
+    rows = [{ kind: "only" }];
+    sel = 0;
+    body.innerHTML = `<div class="sep"></div>${listHtml("", [])}`;
+    return paint();
+  }
   if (!v) return renderEmpty();
   if (!notes) loadNotes();
   pinSel = -1;
@@ -215,6 +312,21 @@ function render() {
         : !q
           ? `<div class="qempty plain">${esc(T.searchHint)}</div>`
           : `<div class="qempty"><span class="cat">${cat("normal")}</span>${esc(T.notFound(mascotOn()))}</div>`;
+  } else if (fq !== null) {
+    vague = false;
+    if (fq && fileRes?.q !== fq) findFiles(fq);
+    const f = fileRes?.found;
+    // 新的结果回来之前先留着上一次的，不闪
+    rows = fq && f ? f.hits.map((h): Row => ({ kind: "file", f: h })) : [];
+    html =
+      fileHead(f) +
+      (rows.length
+        ? listHtml(v, [])
+        : !fq
+          ? `<div class="qempty plain">${esc(T.fileHint)}</div>`
+          : fileRes?.q !== fq
+            ? `<div class="qempty plain">${esc(T.searching)}</div>`
+            : `<div class="qempty"><span class="cat">${cat("normal")}</span>${esc(T.fileNone)}</div>`);
   } else if (web) {
     // 网页关键字：只有这一行和「记下来」（万一真想记这句话）
     vague = false;
@@ -337,9 +449,12 @@ function footer() {
   if (!v && pinSel >= 0) {
     ft.innerHTML = k(["↵", K.space], K.open) + k(rowStarts.length > 1 ? ["←", "→", "↑", "↓"] : ["←", "→"], K.pick) + k(["Esc"], K.close);
   } else if (!v) {
-    ft.innerHTML = (recents.length ? k(["Alt", `1–${Math.min(recents.length, 9)}`], K.pins) + k(["←", "→"], K.pick) : "") + k(["?"], K.searchPrefix) + k(["Esc"], K.close);
+    ft.innerHTML = (recents.length ? k(["Alt", `1–${Math.min(recents.length, 9)}`], K.pins) + k(["←", "→"], K.pick) : "") + k(["?"], K.searchPrefix) + k(["f", K.space], K.filePrefix) + k(["Esc"], K.close);
   } else if (searchText(v) !== null) {
     ft.innerHTML = (rows.length ? k(["↵"], K.openMain) + move : "") + k(["Esc"], K.close);
+  } else if (row?.kind === "file") {
+    const by = fileRes?.found.engine === "everything" || fileRes?.found.engine === "mine" ? `<span>${esc(T.fileEverything)}</span>` : "";
+    ft.innerHTML = k(["↵"], K.open) + k(["Shift", "↵"], K.dir) + k(["Ctrl", "C"], K.copyPath) + k([K.rightClick], K.more) + by;
   } else if (row?.kind === "app") {
     const it = row.h.it;
     // 开着空格启动、这会儿按空格能打开：回车旁边多一个「空格」（橘色）
@@ -414,8 +529,11 @@ async function openWeb(w: WebHit) {
 
 /** 记下来；asNote 时只记成笔记 */
 async function save(asNote = false) {
-  const v = inp.value.trim();
-  if (!v || busy) return;
+  const typed = inp.value.trim();
+  if ((!typed && !pics.length) || busy) return;
+  // 只有截图没写字：存成一条笔记，标题「截图」
+  const v = typed || T.picName;
+  if (!typed) asNote = true;
   busy = true;
   inp.disabled = true;
   closeMenu();
@@ -423,7 +541,7 @@ async function save(asNote = false) {
   body.innerHTML = `<div class="sep"></div><div class="qempty plain"><span class="spin"></span>${esc(useAI && !asNote ? T.thinking : T.saving)}</div>`;
   ft.innerHTML = "";
   try {
-    const s = await quickSaveAll(v, useAI, devices, asNote);
+    const s = await quickSaveAll(v, useAI && !!typed, devices, asNote, pics.map((p) => p.pic));
     busy = false;
     showSaved(s, v);
   } catch (err) {
@@ -499,22 +617,77 @@ function run(i: number, how: "open" | "admin" | "dir" = "open") {
   if (row.kind === "only") return save(true);
   if (row.kind === "calc") return copyCalc(row.c);
   if (row.kind === "web") return openWeb(row.w);
+  if (row.kind === "file") return fileAct(row.f, how === "dir" ? "dir" : "open");
   return openHit(row);
 }
 
 // ---------- 右键菜单：放到常用里（这里空着时那一排和桌面组件上都有）、起别名、不显示 ----------
 
 let menuFor: LaunchItem | null = null;
+/** 右键的是搜到的文件 */
+let menuFile: FileHit | null = null;
+
+function openFileMenu(h: FileHit, x: number, y: number) {
+  menuFor = null;
+  menuFile = h;
+  const M = T.menu;
+  const mi = (m: string, ic: IconName, t: string, tail = "") => `<button class="mi" data-m="${m}" role="menuitem">${icon(ic)}${esc(t)}${tail}</button>`;
+  menu.innerHTML =
+    mi("fopen", "external-link", M.open, kbd("↵")) +
+    mi("fdir", "folder-open", M.dir, kbd("Shift ↵")) +
+    mi("fcopy", "copy", T.key.copyPath, kbd("Ctrl C")) +
+    `<div class="msep"></div>` +
+    mi("fpin", "pin", M.pin) +
+    (h.folder ? "" : mi("fnote", "notebook-pen", M.toNote));
+  menu.hidden = false;
+  menu.style.left = `${Math.max(8, Math.min(x, innerWidth - menu.offsetWidth - 24))}px`;
+  menu.style.top = `${y}px`;
+  fit();
+}
+
+async function copyPath(h: FileHit) {
+  try {
+    await copyText(h.path);
+    say(T.fileCopied(h.name));
+  } catch (err) {
+    say(errText(err), "err");
+  }
+}
+
+async function fileMenuAction(m: string, h: FileHit) {
+  closeMenu();
+  if (m === "fopen" || m === "fdir") return fileAct(h, m === "fdir" ? "dir" : "open");
+  if (m === "fcopy") return copyPath(h);
+  try {
+    if (m === "fpin") {
+      // 加到「自己加的」，再放进常用（和设置里加的一样，id 是 path:路径）
+      const id = `path:${h.path}`;
+      if (!cfg.pins.includes(id) && cfg.pins.length >= MAX_PINS) return say(T.pinsFull(MAX_PINS), "err");
+      await api.fileAct(h.path, "grant");
+      const custom = cfg.custom.some((c) => c.target === h.path) ? cfg.custom : [...cfg.custom, { name: h.name, target: h.path }];
+      return saveCfg({ ...cfg, custom, pins: cfg.pins.includes(id) ? cfg.pins : [...cfg.pins, id] }, T.filePinned(h.name));
+    }
+    if (m === "fnote") {
+      const id = await api.fileToNote(h.path);
+      await api.openMainNav("notes", id);
+      return close();
+    }
+  } catch (err) {
+    say(T.fileFail(errText(err)), "err");
+  }
+}
 
 function closeMenu() {
   if (menu.hidden) return;
   menu.hidden = true;
   menuFor = null;
+  menuFile = null;
   fit();
 }
 
 function openMenu(it: LaunchItem, x: number, y: number) {
   menuFor = it;
+  menuFile = null;
   const M = T.menu;
   const al = cfg.aliases.filter((a) => a.id === it.id).map((a) => a.alias);
   const mi = (m: string, ic: IconName, t: string, tail = "", cls = "") => `<button class="mi${cls}" data-m="${m}" role="menuitem">${icon(ic)}${esc(t)}${tail}</button>`;
@@ -544,6 +717,7 @@ async function saveCfg(next: LaunchConfig, done: string) {
 }
 
 async function menuAction(m: string) {
+  if (menuFile) return fileMenuAction(m, menuFile);
   const it = menuFor;
   if (!it) return;
   if (m === "alias") return aliasForm(it);
@@ -599,6 +773,19 @@ body.addEventListener("click", (e) => {
   const t = e.target as HTMLElement;
   const p = t.closest<HTMLElement>("[data-r]");
   if (p) return void launch(recents[Number(p.dataset.r)]);
+  // 搜文件上面那一行：一键开启（到设置里说清楚再开）、打开用户自己装的 Everything
+  const fe = t.closest<HTMLElement>("[data-fe]")?.dataset.fe;
+  if (fe === "on") return void api.openMainNav("settings", undefined, undefined, "quick", "file_search").then(() => close(), () => close());
+  if (fe === "theirs") {
+    api.everythingOpenTheirs().then(
+      () => {
+        fileRes = null;
+        setTimeout(render, 1500);
+      },
+      (err) => say(T.fileFail(errText(err)), "err"),
+    );
+    return;
+  }
   if (t.closest("#next")) {
     const nx = nextRem();
     if (nx) api.openMainNav("reminders", undefined, nx.r.id).then(() => close(), () => close());
@@ -615,6 +802,7 @@ body.addEventListener("contextmenu", (e) => {
   const row = el ? rows[Number(el.dataset.i)] : null;
   const it = p ? recents[Number(p.dataset.r)] : row?.kind === "app" ? row.h.it : null;
   if (it) openMenu(it, e.clientX, e.clientY);
+  else if (row?.kind === "file") openFileMenu(row.f, e.clientX, e.clientY);
 });
 // 输入框里留着系统的右键菜单（粘贴），别处不要
 document.addEventListener("contextmenu", (e) => {
@@ -711,6 +899,12 @@ inp.addEventListener("keydown", (e) => {
   } else if (e.key === "Enter") {
     e.preventDefault();
     run(sel, e.ctrlKey ? "admin" : e.shiftKey ? "dir" : "open");
+  } else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "c" && inp.selectionStart === inp.selectionEnd) {
+    // 搜到的文件：没选中输入框里的字时 Ctrl + C 复制路径
+    const r = rows[sel];
+    if (r?.kind !== "file") return;
+    e.preventDefault();
+    copyPath(r.f);
   }
 });
 
@@ -758,6 +952,7 @@ function clear() {
   card.hidden = false;
   inp.disabled = false;
   inp.value = "";
+  clearPics();
   picked = false;
   src = "";
   say("");
@@ -784,8 +979,14 @@ function applySettings(s: Settings | null) {
 
 async function reset() {
   const kept = draft;
+  const keptPics = draftPics;
   draft = "";
+  draftPics = [];
   clear();
+  if (keptPics.length) {
+    pics = keptPics;
+    paintPics();
+  }
   stage.classList.remove("gone");
   replay(card);
   const [s, devs, pickedText, st, rs] = await Promise.all([
@@ -814,6 +1015,9 @@ async function reset() {
 /** 先清空再藏起来：下次显示时不会先闪一下上次的内容；消失不留动画。keep：没写完的字留着下次放回去（选中文字带进来、一个字没改的不留） */
 function close(keep = false) {
   draft = keep && !saved && (src === "typed" || src === "kept") && inp.value.trim() ? inp.value : "";
+  // 粘了图还没记下来：图也留着（交给 draftPics，下面 clear 不会把它们清掉）
+  draftPics = keep && !saved ? pics : [];
+  if (draftPics.length) pics = [];
   dragUntil = 0;
   stage.classList.add("gone");
   clear();
@@ -883,6 +1087,24 @@ listen<string>("flash-text", ({ payload }) => {
   src = "picked";
   render();
   inp.setSelectionRange(inp.value.length, inp.value.length);
+});
+picsEl.addEventListener("click", (e) => {
+  const b = (e.target as HTMLElement).closest<HTMLElement>("[data-pdel]");
+  if (!b) return;
+  const [p] = pics.splice(Number(b.dataset.pdel), 1);
+  if (p) URL.revokeObjectURL(p.url);
+  paintPics();
+  render();
+  inp.focus();
+});
+picsEl.addEventListener("mousedown", (e) => e.preventDefault());
+// 粘贴截图（随便哪个截图工具截的、复制的图片）：图片跟着这句话，回车时放进一条笔记。
+// 剪贴板里有文字就照常粘文字：从 Word、网页复制文字时，剪贴板里常常还带着一张「图片版」
+inp.addEventListener("paste", (e) => {
+  const files = [...(e.clipboardData?.files ?? [])].filter((x) => x.type.startsWith("image/"));
+  if (!files.length || e.clipboardData?.getData("text/plain").trim()) return;
+  e.preventDefault();
+  for (const x of files) void x.arrayBuffer().then((b) => addPic(new Uint8Array(b), x.type));
 });
 listen("launcher-changed", async () => {
   items = await api.launcherList();

@@ -4,9 +4,12 @@ mod clock;
 mod db;
 mod desk;
 mod diag;
+mod everything;
 mod export;
+mod filesearch;
 mod launcher;
 mod links;
+mod location;
 mod lunar;
 mod onboard;
 mod recur;
@@ -54,6 +57,10 @@ pub struct AppState {
     pub flash_text: Mutex<Option<String>>,
     pub last_ring: Mutex<Instant>,
     pub data_dir: PathBuf,
+    /// 默认的数据位置（%APPDATA%\app.dingmi，调试版是 DINGMI_DATA_DIR）；换了位置的话这里只有 location.json
+    pub home: PathBuf,
+    /// 刚搬过家的结果，「设置 → 数据」打开时取走显示一次
+    pub data_notice: Mutex<Option<String>>,
     /// 这台电脑的设备 ID，指定设备提醒时用
     pub device: String,
     pub sync: sync::SyncState,
@@ -1568,6 +1575,98 @@ async fn open_path(app: AppHandle, path: String) -> Res<()> {
     tauri::async_runtime::spawn_blocking(move || launcher::run(&path, None)).await.map_err(err)?
 }
 
+// ---------- 命令：搜电脑上的文件（需求-1.x 第 21、42.7 节） ----------
+
+/// 快捷框里「f 加空格」搜文件
+#[tauri::command]
+async fn file_search(q: String) -> Res<filesearch::Found> {
+    tauri::async_runtime::spawn_blocking(move || filesearch::search(&q)).await.map_err(err)
+}
+
+/// 打开搜到的文件（how=open）、打开所在文件夹并选中它（how=dir）、要放到常用里（how=grant）。只认最近一次搜出来的
+#[tauri::command]
+async fn file_act(path: String, how: String) -> Res<()> {
+    if !allow::local_abs(&path) || !filesearch::was_found(&path) {
+        return Err("找不到这个文件了，重新搜一下".into());
+    }
+    match how.as_str() {
+        "dir" => links::shell_reveal(&path),
+        // 放到常用里：先记成用户选过的，启动器才肯加
+        "grant" => {
+            allow::grant(&path);
+            Ok(())
+        }
+        // 程序、脚本这类双击就会运行的，回车照样打开：是用户自己搜、自己选的（和笔记里别人塞进来的附件不同）
+        _ => tauri::async_runtime::spawn_blocking(move || launcher::run(&path, None)).await.map_err(err)?,
+    }
+}
+
+/// 搜到的文件放进笔记：新建一条笔记，文件复制进去当附件（图片直接显示）；回新笔记的 id
+#[tauri::command]
+async fn file_to_note(app: AppHandle, st: tauri::State<'_, AppState>, path: String) -> Res<i64> {
+    if !allow::local_abs(&path) || !filesearch::was_found(&path) {
+        return Err("找不到这个文件了，重新搜一下".into());
+    }
+    let p = PathBuf::from(&path);
+    let meta = std::fs::metadata(&p).map_err(|_| "这个文件打不开了")?;
+    if !meta.is_file() {
+        return Err("文件夹放不进笔记，选里面的文件".into());
+    }
+    if meta.len() as usize > db::MAX_ATTACHMENT {
+        return Err("文件不能超过 50 MB".into());
+    }
+    let bytes = tauri::async_runtime::spawn_blocking(move || std::fs::read(p)).await.map_err(err)?.map_err(|e| format!("读不了这个文件：{e}"))?;
+    let name = Path::new(&path).file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
+    let ext = Path::new(&name).extension().map(|e| e.to_string_lossy().to_lowercase()).unwrap_or_default();
+    let mime = match ext.as_str() {
+        "png" => "image/png",
+        "jpg" | "jpeg" => "image/jpeg",
+        "gif" => "image/gif",
+        "webp" => "image/webp",
+        "bmp" => "image/bmp",
+        _ => "application/octet-stream",
+    };
+    let c = st.db.lock().unwrap();
+    let id = db::upsert_note(&c, &db::Note { title: name.clone(), ..Default::default() }).map_err(err)?;
+    let mut n = db::get_note(&c, id).map_err(err)?.ok_or("没存上")?;
+    let file = db::save_file(&c, &st.data_dir, mime, &name, &bytes, Some(&n.uid), None)?;
+    n.body = if mime.starts_with("image/") { format!("![](att:{file})") } else { format!("[{}](att:{file})", name.replace(['[', ']'], "")) };
+    db::upsert_note(&c, &n).map_err(err)?;
+    drop(c);
+    notify_data(&app);
+    Ok(id)
+}
+
+/// 打开用户自己装的、没开着的 Everything
+#[tauri::command]
+fn everything_open_theirs() -> Res<()> {
+    let p = filesearch::everything::installed().ok_or("没找到装好的 Everything")?;
+    std::process::Command::new(p).spawn().map(|_| ()).map_err(|e| format!("Everything 打不开：{e}"))
+}
+
+#[tauri::command]
+async fn everything_status() -> everything::Status {
+    tauri::async_runtime::spawn_blocking(everything::status).await.unwrap_or(everything::Status { engine: "", ours: false, service: false, theirs: false, version: everything::VERSION, urls: [everything::URL, everything::MIRROR] })
+}
+
+/// 一键开启全盘搜索：下载（from_file：用户自己下好、选压缩包）、核对、装服务（要管理员确认一次）、在后台开起来
+#[tauri::command]
+async fn everything_enable(from_file: Option<bool>) -> Res<everything::Status> {
+    everything::enable(from_file.unwrap_or(false)).await?;
+    diag::log("搜文件", "开了全盘搜索（叮咪带的 Everything）");
+    // 刚开起来要建一会儿索引，窗口先出来
+    tokio::time::sleep(std::time::Duration::from_millis(1500)).await;
+    Ok(everything_status().await)
+}
+
+/// 关掉全盘搜索：停掉、删服务（要管理员确认）、删文件
+#[tauri::command]
+async fn everything_disable() -> Res<everything::Status> {
+    tauri::async_runtime::spawn_blocking(everything::disable).await.map_err(err)??;
+    diag::log("搜文件", "关了全盘搜索");
+    Ok(everything_status().await)
+}
+
 /// 选一个文件夹或文件，取消时为 null
 #[tauri::command]
 async fn pick_path(folder: bool) -> Option<String> {
@@ -1606,6 +1705,65 @@ async fn sound_pick(st: tauri::State<'_, AppState>) -> Res<Option<String>> {
     }
     diag::log("设置", "换了自己的提示音");
     Ok(Some(dst.to_string_lossy().into_owned()))
+}
+
+// ---------- 命令：数据放在哪（需求-1.x 第 42.8 节） ----------
+
+#[derive(serde::Serialize)]
+struct DataDirInfo {
+    dir: String,
+    home: String,
+    /// 换过位置（不在默认的地方）
+    custom: bool,
+    /// 刚搬过家的结果，只给一次
+    notice: Option<String>,
+}
+
+#[tauri::command]
+fn data_dir_info(st: tauri::State<AppState>) -> DataDirInfo {
+    DataDirInfo {
+        dir: st.data_dir.display().to_string(),
+        home: st.home.display().to_string(),
+        custom: !location::same(&st.data_dir, &st.home),
+        notice: st.data_notice.lock().unwrap().take(),
+    }
+}
+
+/// 选一个文件夹，看看能不能放、怎么放（还不搬）；没选回 None
+#[tauri::command]
+async fn data_dir_pick(st: tauri::State<'_, AppState>) -> Res<Option<location::Check>> {
+    let Some(p) = tauri::async_runtime::spawn_blocking(|| launcher::pick(true)).await.ok().flatten() else {
+        return Ok(None);
+    };
+    let home = st.home.clone();
+    Ok(Some(tauri::async_runtime::spawn_blocking(move || location::check(&home, Path::new(&p))).await.map_err(err)?))
+}
+
+/// 搬回默认位置之前看一眼
+#[tauri::command]
+fn data_dir_home_check(st: tauri::State<AppState>) -> location::Check {
+    location::check(&st.home, &st.home)
+}
+
+/// 真搬：再看一次（选好到现在可能变了），记下要搬到哪，重新打开叮咪，打开数据库之前搬好
+#[tauri::command]
+async fn data_dir_move(app: AppHandle, st: tauri::State<'_, AppState>, pick: String, dir: String) -> Res<()> {
+    let home = st.home.clone();
+    let c = tauri::async_runtime::spawn_blocking(move || location::check(&home, Path::new(&pick))).await.map_err(err)?;
+    if c.kind.is_empty() {
+        return Err(c.msg);
+    }
+    if c.dir != dir {
+        return Err("这个文件夹的情况变了，重新选一次".into());
+    }
+    location::plan(&st.home, &c).map_err(err)?;
+    diag::log("数据", format!("数据要{}到 {}，重新打开叮咪", if c.kind == "dingmi" { "换" } else { "搬" }, c.dir));
+    // 拿着数据库不放：写到一半的都写完、并进主文件，重启前不再有人改
+    let db = st.db.lock().unwrap();
+    let _ = db.execute_batch("PRAGMA wal_checkpoint(TRUNCATE)");
+    win::restart_now(&app);
+    drop(db);
+    Err("重新打开叮咪没成功，关掉叮咪再打开就会搬".into())
 }
 
 // ---------- 命令：自动更新 ----------
@@ -1789,6 +1947,11 @@ fn build_tray(app: &AppHandle) -> tauri::Result<()> {
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    // 卸载叮咪时安装包调过来：开过一键全盘搜索的，停掉 Everything、删掉服务和文件，做完就走（需求-1.x 第 42.7 节）
+    if std::env::args().any(|a| a == "--remove-everything") {
+        everything::remove_for_uninstall();
+        return;
+    }
     if cfg!(windows) && !sys::webview2_ready() {
         sys::alert_no_webview2();
         return;
@@ -1824,11 +1987,17 @@ pub fn run() {
         )
         .setup(|app| {
             let handle = app.handle().clone();
-            let data_dir = dev_data_dir()
+            let home = dev_data_dir()
                 .or_else(|| app.path().app_data_dir().ok())
                 .unwrap_or_else(|| PathBuf::from("."));
+            // 数据放在哪（需求-1.x 第 42.8 节）：设置里换了位置的，先搬好再打开数据库
+            let opened = location::open(&home);
+            let data_dir = opened.dir.clone();
             diag::init(&data_dir);
             diag::log("启动", format!("叮咪 {} 启动了", app.package_info().version));
+            for (kind, msg) in &opened.logs {
+                diag::log(kind, msg);
+            }
             let conn = db::open(&data_dir).inspect_err(|e| diag::log("出错", format!("打不开数据库：{e}")))?;
             // 笔记里的图片：配置里只放行了 $APPDATA 下的，调试时数据目录可能在别处
             let _ = app.asset_protocol_scope().allow_directory(db::attachment_dir(&data_dir), true);
@@ -1842,6 +2011,13 @@ pub fn run() {
             let mut settings: Settings = saved.unwrap_or_default();
             settings::ensure_shared(&conn, &settings, &device)?;
             settings::upgrade_note_cats(&conn, &mut settings)?;
+            // 刚搬过家：自己选的提示音记的是原来的完整路径，跟着换
+            if let Some(from) = &opened.moved_from {
+                if let Ok(rest) = Path::new(&settings.sound_file).strip_prefix(from) {
+                    settings.sound_file = data_dir.join(rest).display().to_string();
+                    let _ = settings::save_local(&conn, &settings);
+                }
+            }
             // 上次退出时攒着的提醒，这次直接弹出来
             let _ = conn.execute(
                 "UPDATE reminders SET state=?1 WHERE state=2 AND done=0",
@@ -1853,7 +2029,8 @@ pub fn run() {
                 focus_manual: AtomicBool::new(false),
                 focus_auto: AtomicBool::new(false),
                 shortcuts: Mutex::new(HashMap::new()),
-                nav: Mutex::new(None),
+                // 刚搬过家（或者没搬成）：打开主窗口时直接到「设置 → 数据」，看到结果
+                nav: Mutex::new(opened.notice.is_some().then(|| json!({ "view": "settings", "sub": "data", "row": "data_dir" }))),
                 tray_focus: Mutex::new(None),
                 tray_sync: Mutex::new(None),
                 tray_update: Mutex::new(None),
@@ -1862,6 +2039,8 @@ pub fn run() {
                 flash_text: Mutex::new(None),
                 last_ring: Mutex::new(Instant::now()),
                 data_dir,
+                home,
+                data_notice: Mutex::new(opened.notice),
                 device,
                 sync: sync::SyncState::new(),
                 hotkey_notice: Mutex::new(None),
@@ -1885,6 +2064,8 @@ pub fn run() {
             }
             win::warm_flash(&handle);
             launcher::start(handle.clone());
+            // 开过一键全盘搜索的：叮咪带的 Everything 跟着开起来
+            std::thread::spawn(everything::start);
             sync::start(handle.clone());
             sync::backup::start(handle.clone());
             update::start(handle.clone());
@@ -1907,6 +2088,17 @@ pub fn run() {
             pin_note,
             link_note_reminder,
             sound_pick,
+            data_dir_info,
+            data_dir_pick,
+            data_dir_home_check,
+            data_dir_move,
+            file_search,
+            file_act,
+            file_to_note,
+            everything_open_theirs,
+            everything_status,
+            everything_enable,
+            everything_disable,
             get_note,
             open_note_window,
             note_windows,
@@ -2032,7 +2224,10 @@ pub fn run() {
             // 关掉所有窗口后继续在托盘里运行，只有菜单里的"退出"才真正退出
             match event {
                 RunEvent::ExitRequested { api, code, .. } if code.is_none() => api.prevent_exit(),
-                RunEvent::Exit => diag::log("启动", "退出了"),
+                RunEvent::Exit => {
+                    everything::stop();
+                    diag::log("启动", "退出了");
+                }
                 _ => {}
             }
         });

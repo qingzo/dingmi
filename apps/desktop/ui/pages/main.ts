@@ -7,6 +7,7 @@ import { mascotOn, scaleWithFontSize } from "../lib/look";
 import { getVersion } from "@tauri-apps/api/app";
 import { listen } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
+import { picKey, type Pic } from "../lib/quick";
 import {
   api, errText, newNote, newReminder, type AttachmentInfo, type Checklist, type ChecklistId, type FocusInfo, type InboxEntry, type Nav, type Note, type Reminder, type Repeat,
   type RepeatKind, type Settings, type SyncStatus, type Tag, type TermsView, type TrashKind, type UpdateStatus,
@@ -243,6 +244,18 @@ function renderCounts() {
 /** 抽屉里正在改的那条，列表里标出来 */
 let editingRid = 0;
 
+/** 笔记正文里的图片（附件的文件名） */
+const noteImages = (body: string) => [...body.matchAll(/!\[[^\]]*\]\(att:([\w.-]+)\)/g)].map((x) => x[1]);
+
+/** 图片放进提醒关联的笔记（需求-1.x 第 42.6 节）：没有关联笔记就新建一条（标题同提醒）关联上 */
+async function addPicsToReminder(r: Reminder, pics: Pic[]) {
+  let n = linkedNote(r) ?? (await api.saveNote(newNote({ title: r.title, reminder_id: r.id })));
+  const md: string[] = [];
+  for (const p of pics) md.push(`![](att:${await api.saveAttachment(p.bytes, p.mime, n.uid, p.name)})`);
+  n = (await api.getNote(n.id)) ?? n;
+  await api.saveNote({ ...n, body: [n.body.trim(), md.join("\n")].filter(Boolean).join("\n\n") });
+}
+
 /** 和提醒有关的笔记：笔记里的待办设的提醒是那篇笔记，或者关联了这条提醒的笔记（需求-1.x 第 42.2 节） */
 const linkedNote = (r: Reminder) => S.notes.find((n) => (r.note_uid ? n.uid === r.note_uid : n.reminder_id === r.id));
 
@@ -251,9 +264,10 @@ function remRow(r: Reminder, o: { done?: boolean; loose?: boolean } = {}) {
   const late = !o.done && isLate(r);
   const rec = isRecurring(r.repeat);
   const note = linkedNote(r);
+  const pics = note ? noteImages(note.body).length : 0;
   const ico = (n: IconName, tip: string) => `<span class="ico" title="${esc(tip)}">${I(n)}</span>`;
   const icons = [
-    note ? ico("notebook-pen", r.note_uid ? T.fromNote(note.title) : T.withNote(note.title)) : "",
+    note ? ico(pics ? "image" : "notebook-pen", r.note_uid ? T.fromNote(note.title) : pics ? T.withPics(note.title, pics) : T.withNote(note.title)) : "",
     !o.done && r.snoozed_until ? ico("alarm-clock", T.snoozed(r.snooze_count)) : "",
     rec ? ico("repeat", repeatLabel(r.repeat, r.due_at)) : "",
     r.only_on.length ? ico("monitor", onlyOnLabel(r.only_on)) : "",
@@ -706,6 +720,7 @@ function hideDrawer() {
   drawer.innerHTML = "";
   drawer.onsubmit = null;
   drawer.onclick = null;
+  drawer.onpaste = null;
   drawerClose = null;
   editingRid = 0;
   $$(".it.sel").forEach((x) => x.classList.remove("sel"));
@@ -846,6 +861,9 @@ function openEditor(r: Reminder, o: { draft?: (r: Reminder) => void; afterSave?:
   const devs = S.devices.length > 1;
   /** 备注里的文字和子项分开改（需求-1.x 第 42.1 节） */
   const parts = splitSubs(r.detail);
+  /** 这次要加的图片（存好提醒后放进关联的笔记）；关联笔记里已经有的只显示 */
+  const dpics: { pic: Pic; url: string }[] = [];
+  const hadPics = note ? noteImages(note.body) : [];
   $$(".it.sel").forEach((x) => x.classList.remove("sel"));
   editingRid = r.id;
   $$(`.it[data-rid="${r.id}"]`).forEach((x) => x.classList.add("sel"));
@@ -862,6 +880,7 @@ function openEditor(r: Reminder, o: { draft?: (r: Reminder) => void; afterSave?:
       <div class="repbox" id="ed-repbox" hidden>${repeatBoxHtml(r.repeat, due)}</div>
       <label class="fl"><span>${T.d.detail}</span><textarea class="field" id="ed-detail" rows="2" placeholder="${T.d.detailPh}">${esc(parts.text)}</textarea></label>
       <div class="fl"><span>${T.d.subs}<em class="subn num" id="ed-subn"></em></span><div class="subs" id="ed-subs">${parts.subs.map(subRow).join("")}</div><input class="field subadd" id="ed-subadd" placeholder="${T.d.subAddPh}" autocomplete="off"></div>
+      ${o.draft ? "" : `<div class="fl"><span>${T.d.pics}</span><div class="dpics" id="ed-pics">${hadPics.map((f) => `<img src="${attachmentSrc(f)}" alt="" data-open-note="${note?.id ?? 0}" title="${T.d.picInNote}">`).join("")}</div><div class="rowf"><button type="button" class="chipsel" id="ed-addpic">${I("image")}${T.d.addPic}</button><span class="fhelp">${T.d.picHint}</span></div><input type="file" id="ed-picfile" accept="image/*" multiple hidden></div>`}
       <div class="fl"><span>${T.d.cat}</span><div class="rowf" id="ed-tags">${catChips(tagList(), r.tag)}${newCatButton("chipsel")}</div></div>
       <div class="swrow"><div>${T.urgent}<small>${T.d.urgentSub}</small></div><button type="button" class="tog" role="switch" id="ed-urgent" aria-checked="${r.urgent}" aria-label="${T.urgent}"></button></div>
       ${devs ? `<div class="fl"><span>${T.d.where}</span><div class="rowf" id="ed-devs"><button type="button" class="chipsel" data-dev="" aria-pressed="${!r.only_on.length}">${T.d.everyPc}</button>${S.devices.map((d) => `<button type="button" class="chipsel" data-dev="${esc(d.uid)}" aria-pressed="${r.only_on.includes(d.uid)}">${esc(d.name)}${d.me ? T.d.thisPc : ""}</button>`).join("")}</div></div>` : ""}
@@ -899,6 +918,30 @@ function openEditor(r: Reminder, o: { draft?: (r: Reminder) => void; afterSave?:
   bindKind();
   showWhen();
   bindSubs();
+  // 加图片：点按钮选，或者直接粘贴截图
+  const addPics = async (files: File[]) => {
+    for (const f of files.filter((x) => x.type.startsWith("image/")).slice(0, 8 - dpics.length)) {
+      const bytes = new Uint8Array(await f.arrayBuffer());
+      // 同一张图加了两次只留一张
+      if (dpics.some((p) => p.pic.bytes.length === bytes.length && picKey(p.pic.bytes) === picKey(bytes))) {
+        say(T.d.picSame);
+        continue;
+      }
+      const url = URL.createObjectURL(f);
+      dpics.push({ pic: { bytes, mime: f.type, name: f.name || T.d.picName }, url });
+      $("#ed-pics")?.insertAdjacentHTML("beforeend", `<span class="dpic"><img src="${url}" alt=""><button type="button" data-picdel="${dpics.length - 1}" title="${T.del}" aria-label="${T.del}">${I("x")}</button></span>`);
+    }
+  };
+  const picFile = drawer.querySelector<HTMLInputElement>("#ed-picfile");
+  if (picFile) picFile.onchange = () => void addPics([...(picFile.files ?? [])]).then(() => (picFile.value = ""));
+  if (!o.draft)
+    drawer.onpaste = (e) => {
+      const files = [...(e.clipboardData?.files ?? [])];
+      // 剪贴板里有文字就照常粘文字（Word、网页复制的文字常常还带着一张图片版）
+      if (!files.some((x) => x.type.startsWith("image/")) || e.clipboardData?.getData("text/plain").trim()) return;
+      e.preventDefault();
+      void addPics(files);
+    };
 
   // 打一句话：本地规则理解成几点，右边马上写出来；说了「每周三」这类的，重复也跟着换
   when.addEventListener("input", () => {
@@ -977,6 +1020,16 @@ function openEditor(r: Reminder, o: { draft?: (r: Reminder) => void; afterSave?:
       }
       return;
     }
+    if (el.closest("#ed-addpic")) return drawer.querySelector<HTMLInputElement>("#ed-picfile")?.click();
+    const pd = el.closest<HTMLElement>("[data-picdel]");
+    if (pd) {
+      // 删掉的位置留空，不打乱后面的序号
+      const i = Number(pd.dataset.picdel);
+      URL.revokeObjectURL(dpics[i]?.url ?? "");
+      dpics[i] = { pic: { bytes: new Uint8Array(), mime: "", name: "" }, url: "" };
+      pd.closest(".dpic")?.remove();
+      return;
+    }
     const sw = el.closest<HTMLElement>("#ed-urgent");
     if (sw) return sw.setAttribute("aria-checked", String(sw.getAttribute("aria-checked") !== "true"));
     const on = el.closest<HTMLElement>("[data-open-note]");
@@ -1029,6 +1082,9 @@ function openEditor(r: Reminder, o: { draft?: (r: Reminder) => void; afterSave?:
     }
     try {
       const saved = await api.saveReminder(out);
+      const keep = dpics.filter((p) => p.pic.bytes.length).map((p) => p.pic);
+      if (keep.length) await addPicsToReminder(saved, keep);
+      dpics.forEach((p) => p.url && URL.revokeObjectURL(p.url));
       hideDrawer();
       o.afterSave?.(saved);
       say(savedSay(saved));

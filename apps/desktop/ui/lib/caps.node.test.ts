@@ -19,9 +19,10 @@ describe("窗口的权限", () => {
     for (const win of ["flash", "qnote", "remind", "morning", "wrap", "widget", "note-*"]) {
       expect(use[win].filter((c) => sensitive.includes(c)), win).toEqual([]);
     }
-    // 提醒卡片、开场白、收尾连文件都碰不了
+    // 提醒卡片、开场白、收尾连文件都碰不了。attachment_dir 只回附件文件夹在哪（卡片上显示关联笔记里的图片要拼图片地址，需求-1.x 第 42.6 节），
+    // 不读不写文件；图片能不能看由 asset 协议的范围管，哪个窗口都一样
     for (const win of ["remind", "morning", "wrap"]) {
-      expect(use[win].filter((c) => /path|attachment|folder|export|restore|launcher/.test(c)), win).toEqual([]);
+      expect(use[win].filter((c) => c !== "attachment_dir" && /path|attachment|folder|export|restore|launcher/.test(c)), win).toEqual([]);
     }
   });
 });

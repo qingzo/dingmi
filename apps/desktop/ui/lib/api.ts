@@ -418,6 +418,44 @@ export type ReminderAction = "done" | "snooze" | "tomorrow" | "snooze_to" | "und
 
 export const emptyRepeat = (): Repeat => ({ kind: "none", days: [], monthday: 0, every: 0, month: 0, nth: 0 });
 
+/** 搜到的一个文件（需求-1.x 第 21 节） */
+export interface FileHit {
+  path: string;
+  name: string;
+  dir: string;
+  folder: boolean;
+  size: number | null;
+  /** "YYYY-MM-DD HH:MM" */
+  modified: string | null;
+}
+
+/** engine：everything 用户自己装的 / mine 叮咪带的 / index Windows 搜索索引 / 空的是都用不了；idle：装了 Everything 但没开着 */
+export interface FileFound {
+  engine: "" | "everything" | "mine" | "index";
+  hits: FileHit[];
+  idle: string | null;
+}
+
+/** 一键开启全盘搜索（需求-1.x 第 42.7 节）：ours 叮咪带的下好了，theirs 用户自己装了 Everything */
+export interface EverythingStatus {
+  engine: FileFound["engine"];
+  ours: boolean;
+  service: boolean;
+  theirs: boolean;
+  version: string;
+  /** 下载不成功时自己下的地址：dingmi.app、voidtools 官网（同一个文件） */
+  urls: [string, string];
+}
+
+/** 选的文件夹能不能放数据：kind 是 empty 搬过去 / dingmi 那里本来就是叮咪的数据，换过去用 / 空着是不行（msg） */
+export interface DataDirCheck {
+  pick: string;
+  dir: string;
+  kind: "" | "empty" | "dingmi";
+  msg: string;
+  size: number;
+}
+
 export const newReminder = (p: Partial<Reminder> = {}): Reminder => ({
   id: 0,
   uid: "",
@@ -544,6 +582,17 @@ export const api = {
   pinNote: (id: number, on: boolean) => invoke<void>("pin_note", { id, on }),
   /** 选一个自己的提示音文件，复制到数据目录里；回复制好的路径，没选是 null */
   soundPick: () => invoke<string | null>("sound_pick"),
+  /** 快捷框「f 加空格」搜文件 */
+  fileSearch: (q: string) => invoke<FileFound>("file_search", { q }),
+  /** 搜到的文件：open 打开 / dir 打开所在文件夹 / grant 要放到常用里 */
+  fileAct: (path: string, how: "open" | "dir" | "grant") => invoke<void>("file_act", { path, how }),
+  /** 搜到的文件放进一条新笔记，回笔记 id */
+  fileToNote: (path: string) => invoke<number>("file_to_note", { path }),
+  everythingStatus: () => invoke<EverythingStatus>("everything_status"),
+  /** fromFile：用户自己下好的压缩包，弹出来选 */
+  everythingEnable: (fromFile = false) => invoke<EverythingStatus>("everything_enable", { fromFile }),
+  everythingDisable: () => invoke<EverythingStatus>("everything_disable"),
+  everythingOpenTheirs: () => invoke<void>("everything_open_theirs"),
   /** 笔记关联一条提醒（需求-1.x 第 42.2 节） */
   linkNoteReminder: (id: number, reminderId: number) => invoke<void>("link_note_reminder", { id, reminderId }),
   /** 在单独的窗口里编辑这条笔记（已经开着就切到前面） */
@@ -668,6 +717,13 @@ export const api = {
   /** 写东西时顺手加一个分类（同名的已经有了就回那个） */
   addCategory: (field: "tags" | "note_cats", name: string) => invoke<TagDef>("add_category", { field, name }),
   dataPath: () => invoke<string>("data_path"),
+  /** 数据放在哪（需求-1.x 第 42.8 节）；notice 是刚搬过家的结果，只给一次 */
+  dataDirInfo: () => invoke<{ dir: string; home: string; custom: boolean; notice: string | null }>("data_dir_info"),
+  /** 选一个文件夹，看看能不能放（还不搬）；没选是 null */
+  dataDirPick: () => invoke<DataDirCheck | null>("data_dir_pick"),
+  dataDirHomeCheck: () => invoke<DataDirCheck>("data_dir_home_check"),
+  /** 记下要搬到哪，叮咪重新打开时搬；成功的话不会回来（叮咪重启了） */
+  dataDirMove: (pick: string, dir: string) => invoke<void>("data_dir_move", { pick, dir }),
   /** 本机每天的自动备份放在哪、最近一次的时间 */
   localBackups: () => invoke<{ dir: string; last: string | null }>("local_backups"),
   /** 桌面组件能不能开毛玻璃（Windows 11 才有） */

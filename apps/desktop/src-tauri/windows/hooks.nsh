@@ -17,6 +17,13 @@
     StrCpy $DeleteAppDataCheckboxState 0
     dingmi_delete:
   ${EndIf}
+  ; 开过一键全盘搜索的：停掉叮咪带的 Everything，删掉它的服务（要管理员确认）和文件（需求-1.x 第 42.7 节）。
+  ; 自动更新时不做；手动装新版选了「先卸载再安装」时也不做（装好接着用）：那时安装包直接在安装目录里运行旧的卸载程序，
+  ; 正常卸载是卸载程序先把自己复制到临时文件夹再运行，$EXEDIR 不是安装目录
+  ${If} $UpdateMode <> 1
+  ${AndIf} $EXEDIR != $INSTDIR
+    ExecWait '"$INSTDIR\${MAINBINARYNAME}.exe" --remove-everything'
+  ${EndIf}
 !macroend
 
 !macro NSIS_HOOK_POSTUNINSTALL

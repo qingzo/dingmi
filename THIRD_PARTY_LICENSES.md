@@ -15,6 +15,7 @@
 | Tauri 安装包中文文字 | apps/desktop/src-tauri/windows/SimpChinese.nsh（从 tauri-cli 2.12.4 自带的那份拷来改的） | Apache-2.0 OR MIT | https://github.com/tauri-apps/tauri |
 | NSIS | 安装包（Tauri 用 NSIS 打包，安装包里带着 NSIS 的安装程序外壳） | Zlib | 源码里没有，只在打出来的安装包里。https://nsis.sourceforge.io/License |
 | Microsoft Edge WebView2 安装程序 | 安装包里带的 WebView2 引导程序（tauri.conf.json 的 embedBootstrapper），没有 WebView2 的电脑装叮咪时顺手装上 | 微软的分发许可 | 源码里没有，只在打出来的安装包里；WebView2 是系统组件（AGPL 第 1 节说的「系统库」）。https://developer.microsoft.com/microsoft-edge/webview2/ |
+| Everything 1.4.1.1032（x64 便携版） | 「一键开启全盘搜索」时才从 dingmi.app 下载（核对 voidtools 公布的 SHA-256），放在 %LOCALAPPDATA%\app.dingmi\everything，单独运行、叮咪通过它的查询接口问（apps/desktop/src-tauri/src/everything.rs、filesearch.rs） | MIT | © 2018 David Carpenter（voidtools）；它里面还用到 PCRE（BSD）等，全文见 https://www.voidtools.com/License.txt（dingmi.app 的下载目录里放一份）。源码里、安装包里都没有。https://www.voidtools.com/ |
 
 团子猫和程序图标是叮咪自己画的，不是第三方素材；它们的使用规则见 [TRADEMARK.md](TRADEMARK.md)。
 
