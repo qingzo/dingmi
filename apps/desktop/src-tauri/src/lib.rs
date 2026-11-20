@@ -1406,8 +1406,8 @@ fn take_nav(st: tauri::State<AppState>) -> Option<Value> {
 }
 
 #[tauri::command]
-fn fit_window(app: AppHandle, window: WebviewWindow, height: f64) {
-    win::fit(&app, &window, height);
+fn fit_window(app: AppHandle, window: WebviewWindow, height: f64, dpr: f64) {
+    win::fit(&app, &window, height, dpr);
 }
 
 /// 快捷框被拖到别处了：记下位置，下次在这块屏幕上就出现在那里
@@ -1819,7 +1819,8 @@ fn terms_seen(app: AppHandle, key: String, version: String) {
 
 /// 组件画好了：按设置上毛玻璃（或者换回不透明）、摆好位置，显示出来（不抢焦点）。换了外观也调一次。回是不是毛玻璃
 #[tauri::command]
-fn widget_show(app: AppHandle, window: WebviewWindow, tint: [u8; 4]) -> bool {
+fn widget_show(app: AppHandle, window: WebviewWindow, tint: [u8; 4], dpr: f64) -> bool {
+    win::page_scale(&window, dpr);
     let glass = win::widget_look(&app, &window, tint);
     desk::show(&window);
     glass

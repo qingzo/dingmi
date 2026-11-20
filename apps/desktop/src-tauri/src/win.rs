@@ -170,6 +170,40 @@ fn area_of(m: &Monitor) -> (f64, f64, f64, f64, f64) {
     (wa.position.x as f64, wa.position.y as f64, wa.size.width as f64, wa.size.height as f64, m.scale_factor())
 }
 
+// ---------- 网页放大了几倍（GitHub #5，需求-1.x 第 44 节） ----------
+// 尺寸定死的窗口（快捷框、提醒卡片、开场白、收尾、首次引导、快速记笔记、桌面组件）照设计稿的大小建，默认网页里 1 像素就是
+// 窗口的 1 个逻辑像素。Windows「文本大小」不是 100% 时 WebView2 把网页整个放大（devicePixelRatio = 屏幕缩放 × 文本大小），
+// 窗口不跟着大就装不下、右边和下面被裁掉。网页量高度时带上 devicePixelRatio，这里算出放大了几倍，窗口的宽高、留的边都乘上它
+
+/// 每个窗口的网页放大了几倍（1 是没放大）
+static PAGE_SCALE: LazyLock<Mutex<HashMap<String, f64>>> = LazyLock::new(Default::default);
+
+fn scale_of(label: &str) -> f64 {
+    PAGE_SCALE.lock().unwrap().get(label).copied().unwrap_or(1.0)
+}
+
+/// 网页报上来的 devicePixelRatio 除以屏幕缩放，记下来
+pub fn page_scale(w: &WebviewWindow, dpr: f64) -> f64 {
+    let sf = w.scale_factor().unwrap_or(1.0);
+    // 文本大小最大 225%
+    let k = if dpr > 0.0 && sf > 0.0 { (dpr / sf).clamp(0.5, 3.0) } else { 1.0 };
+    PAGE_SCALE.lock().unwrap().insert(w.label().to_string(), k);
+    k
+}
+
+/// 尺寸定死的窗口设计稿上的宽（逻辑像素，网页没放大时）
+fn design_w(label: &str) -> Option<f64> {
+    match label {
+        "flash" => Some(FLASH_W),
+        "remind" => Some(REMIND_W),
+        "morning" | "wrap" => Some(CARD_W),
+        "onboard" => Some(ONBOARD_W),
+        "qnote" => Some(QNOTE_W),
+        "widget" => Some(WIDGET_W + WIDGET_PAD.lock().unwrap().0 * 2.0),
+        _ => None,
+    }
+}
+
 /// 主显示器的工作区
 fn work_area(app: &AppHandle) -> (f64, f64, f64, f64, f64) {
     match app.primary_monitor() {
@@ -366,6 +400,7 @@ const FLASH_KV: &str = "flash_pos";
 /// 快捷框：鼠标所在那块屏幕，水平居中，框的顶边在屏幕高度 22% 处；拖到别处过就用拖到的位置。结果往下展开，顶边不动（U4）
 fn place_flash(app: &AppHandle, w: &WebviewWindow) {
     let (x, y, ww, wh, sf) = cursor_area(app);
+    let sf = sf * scale_of("flash");
     let saved = {
         let st = app.state::<AppState>();
         let c = st.db.lock().unwrap();
@@ -386,7 +421,7 @@ fn place_flash(app: &AppHandle, w: &WebviewWindow) {
 /// 快捷框拖完了：记下它在哪块屏幕的什么位置
 pub fn flash_moved(app: &AppHandle, w: &WebviewWindow) {
     let Ok(p) = w.outer_position() else { return };
-    let sf = w.scale_factor().unwrap_or(1.0);
+    let sf = w.scale_factor().unwrap_or(1.0) * scale_of("flash");
     let Some(m) = app.monitor_from_point(p.x as f64 + FLASH_W * sf / 2.0, p.y as f64 + 40.0 * sf).ok().flatten() else { return };
     let (x, y, ..) = area_of(&m);
     let st = app.state::<AppState>();
@@ -406,9 +441,10 @@ pub fn flash_pos_reset(app: &AppHandle) {
     }
 }
 
-/// 快速记笔记：和快捷框同一个位置（鼠标所在那块屏幕，顶边在屏幕高度 22% 处），变高时顶边不动往下长（U7）
+/// 快速记笔记：和快捷框同一个位置（鼠标所在那块屏幕，顶边在屏幕高度 22% 处），变高时顶边不动往下长（U7）。width 是设计稿上的宽
 fn place_top(app: &AppHandle, w: &WebviewWindow, width: f64) {
     let (x, y, ww, wh, sf) = cursor_area(app);
+    let sf = sf * scale_of(w.label());
     let px = x + (ww - width * sf) / 2.0;
     let py = y + wh * 0.22 - FLASH_TOP * sf;
     let _ = w.set_position(PhysicalPosition::new(px.round() as i32, py.round() as i32));
@@ -567,13 +603,13 @@ pub fn open_onboard(app: &AppHandle) {
     });
 }
 
-/// 页面量好自己的高度后调用，窗口跟着内容变高变矮。
-pub fn fit(app: &AppHandle, w: &WebviewWindow, height: f64) {
-    let width = w
-        .inner_size()
-        .ok()
-        .map(|s| s.width as f64 / w.scale_factor().unwrap_or(1.0))
-        .unwrap_or(400.0);
+/// 页面量好自己的高度后调用，窗口跟着内容变高变矮。height 是网页里的像素，dpr 是网页的 devicePixelRatio（见 page_scale）
+pub fn fit(app: &AppHandle, w: &WebviewWindow, height: f64, dpr: f64) {
+    let k = page_scale(w, dpr);
+    let width = design_w(w.label()).map(|d| d * k).unwrap_or_else(|| {
+        w.inner_size().ok().map(|s| s.width as f64 / w.scale_factor().unwrap_or(1.0)).unwrap_or(400.0)
+    });
+    let height = height * k;
     let _ = w.set_size(Size::Logical(LogicalSize::new(width, height)));
     match w.label() {
         "remind" => place_bottom_right(app, w, width, height),
@@ -581,7 +617,9 @@ pub fn fit(app: &AppHandle, w: &WebviewWindow, height: f64) {
         "morning" | "wrap" if !w.is_visible().unwrap_or(false) => place_upper(app, w, width, height),
         "onboard" => place_center(app, w, width, height),
         // 快速记笔记：顶边不动，往下长
-        "qnote" => place_top(app, w, width),
+        "qnote" => place_top(app, w, QNOTE_W),
+        // 快捷框还没显示过：宽度刚按放大的倍数改过，重新摆到中间
+        "flash" if !w.is_visible().unwrap_or(false) => place_flash(app, w),
         _ => {}
     }
 }
@@ -608,7 +646,8 @@ static WIDGET_GLASS: AtomicBool = AtomicBool::new(false);
 fn widget_home(app: &AppHandle) -> PhysicalPosition<i32> {
     let (x, y, ww, _, sf) = work_area(app);
     let (side, top) = *WIDGET_PAD.lock().unwrap();
-    PhysicalPosition::new((x + ww - (WIDGET_W + side + WIDGET_GAP) * sf) as i32, (y + (top + WIDGET_GAP) * sf) as i32)
+    let k = scale_of("widget");
+    PhysicalPosition::new((x + ww - ((WIDGET_W + side) * k + WIDGET_GAP) * sf) as i32, (y + (top * k + WIDGET_GAP) * sf) as i32)
 }
 
 /// 上次放的位置（卡片左上角）；那块屏幕不在了（拔了显示器、改了分辨率）就回到右上角
@@ -650,7 +689,7 @@ fn widget_pad(s: &crate::settings::Settings, glass: bool) -> (f64, f64) {
 /// 把窗口摆到卡片该在的地方
 fn widget_move(w: &WebviewWindow, card: PhysicalPosition<i32>) {
     let (side, top) = *WIDGET_PAD.lock().unwrap();
-    let sf = w.scale_factor().unwrap_or(1.0);
+    let sf = w.scale_factor().unwrap_or(1.0) * scale_of("widget");
     let _ = w.set_position(PhysicalPosition::new(card.x - (side * sf).round() as i32, card.y - (top * sf).round() as i32));
 }
 
@@ -669,7 +708,7 @@ pub fn widget_look(app: &AppHandle, w: &WebviewWindow, tint: [u8; 4]) -> bool {
     *WIDGET_PAD.lock().unwrap() = pad;
     let sf = w.scale_factor().unwrap_or(1.0);
     let h = w.inner_size().map(|s| s.height as f64 / sf).unwrap_or(400.0);
-    let _ = w.set_size(Size::Logical(LogicalSize::new(WIDGET_W + pad.0 * 2.0, h)));
+    let _ = w.set_size(Size::Logical(LogicalSize::new((WIDGET_W + pad.0 * 2.0) * scale_of("widget"), h)));
     widget_move(w, widget_pos(app));
     glass
 }
@@ -771,7 +810,7 @@ pub fn widget_place(app: &AppHandle, reset: bool) {
         }
     } else if let Some((w, p)) = w.and_then(|w| w.outer_position().ok().map(|p| (w, p))) {
         let (side, top) = *WIDGET_PAD.lock().unwrap();
-        let sf = w.scale_factor().unwrap_or(1.0);
+        let sf = w.scale_factor().unwrap_or(1.0) * scale_of("widget");
         let card = format!("{},{}", p.x + (side * sf).round() as i32, p.y + (top * sf).round() as i32);
         let st = app.state::<AppState>();
         let c = st.db.lock().unwrap();

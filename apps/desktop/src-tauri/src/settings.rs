@@ -78,6 +78,9 @@ pub struct Settings {
     pub calc: bool,
     /// 网页关键字：快捷框里打「bd 天气」用百度搜（需求-0.3 第 10.2 节），几台电脑共用
     pub web_keys: Vec<WebKey>,
+    /// 网盘文件夹同步：没有改动时隔几小时更新一次「这台电脑最后出现的时间」，1 / 6 / 12，别的数当 6（只属于这台电脑）。
+    /// 坚果云这类网盘每传一个文件弹一次通知，嫌烦的选长一点（2026-11-18 用户反馈后加的）
+    pub folder_beat_hours: u32,
 }
 
 /// 一条网页关键字。url 里搜的内容用 {q} 代替
@@ -172,6 +175,7 @@ impl Default for Settings {
             motion: "on".into(),
             calc: true,
             web_keys: default_web_keys(),
+            folder_beat_hours: 6,
         }
     }
 }

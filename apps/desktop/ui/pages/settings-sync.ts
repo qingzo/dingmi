@@ -12,7 +12,7 @@ import { emailOk, fmtSize, monthDay, planName, redeemProblem, reformatRedeem, us
 import { icon, type IconName } from "@shared/icons";
 import { $, $$, addDays, ago, dayStr, esc, toast } from "@shared/util";
 import { armed, hideModal, S, type SyncFlow } from "./main-state";
-import { busy, dialog, h5, head, note, row, rows, tog } from "./settings-ui";
+import { busy, dialog, h5, head, note, row, rows, select, tog } from "./settings-ui";
 import { ROWS, T, TS } from "../text/settings";
 
 const R = ROWS.sync;
@@ -660,6 +660,7 @@ function folderOnHtml(s: SyncStatus) {
     )}
     ${h5(R.devices.name, { id: "devices" })}<p class="hint">${esc(TS.devicesHint)}</p>
     <div class="srows" id="sy-devs">${row("reading", { name: TS.reading })}</div>
+    ${rows(row("beat", R.beat, select("folder_beat_hours", R.beat.name, TS.beatOpts), { local: true }))}
     ${moreHtml(s)}${msgLine}`;
 }
 

@@ -329,8 +329,8 @@ card.addEventListener("click", async (e) => {
   if (one) return act(one.dataset.done ? "done" : "snooze", undefined, [Number(one.dataset.done ?? one.dataset.later)]);
   const b = el.closest<HTMLElement>("[data-act]");
   if (b) return act(b.dataset.act as ReminderAction);
-  // 点了卡片空白处：之后的回车、Esc 都给卡片
-  card.focus();
+  // 点了卡片空白处：之后的回车、Esc 都给卡片。点的是「推迟到…」的输入框就不抢，不然打不了字
+  if (!el.closest("input")) card.focus();
 });
 
 // 点过卡片后才收得到按键（卡片出现时不抢焦点）

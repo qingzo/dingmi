@@ -51,8 +51,16 @@ const PUSH_EVERY: Duration = Duration::from_secs(60);
 const FOLDER_EVERY: Duration = Duration::from_secs(10);
 /// 版本太旧、同步停着时，隔这么久看一眼更新了没有（检查更新会改 too_old）
 const OUTDATED_EVERY: Duration = Duration::from_secs(60);
-/// 网盘文件夹方式：隔这么久更新一下「这台电脑最后出现的时间」
-const HEARTBEAT_EVERY: Duration = Duration::from_secs(5 * 60);
+/// 网盘文件夹方式：没有改动时隔多久更新一下「这台电脑最后出现的时间」，设置里选 1 / 6 / 12 小时，默认 6。
+/// 坚果云这类网盘每传一个文件就弹一次通知，原来 5 分钟一次，用户反馈一直在弹（2026-11-18 改）；
+/// 设置里超过一天才算久没出现，所以最长 12 小时。有改动写进文件夹时顺手更新（push_folder）
+fn heartbeat_every(app: &AppHandle) -> Duration {
+    let h = match app.state::<AppState>().settings.lock().unwrap().folder_beat_hours {
+        h @ (1 | 6 | 12) => h,
+        _ => 6,
+    };
+    Duration::from_secs(u64::from(h) * 60 * 60)
+}
 /// 停止或者换同步方式前，最后拉一遍的时间上限
 const LAST_PULL: Duration = Duration::from_secs(15);
 
@@ -1399,7 +1407,7 @@ async fn folder_session(app: &AppHandle, cfg: &FolderCfg, key: crypto::DataKey) 
     }
     let mut beat_at: Option<Instant> = None;
     loop {
-        let beat = beat_at.is_none_or(|t| t.elapsed() >= HEARTBEAT_EVERY);
+        let beat = beat_at.is_none_or(|t| t.elapsed() >= heartbeat_every(app));
         match folder_round(app, cfg, key, beat).await {
             Ok(changed) => {
                 if beat {
@@ -1428,7 +1436,12 @@ async fn push_folder(app: &AppHandle, cfg: &FolderCfg) -> Result<usize, String> 
         // 以前在叮咪同步里因为太大没传的：网盘文件夹不限大小，清掉记号、照常写进去
         let none = records::Limits { me: st.device.clone(), ..Default::default() };
         records::unmark_fitting(&st.db.lock().unwrap(), &none).map_err(err)?;
-        folder::push(&st.db, &st.data_dir, &folder::Folder { dir: &dir, me: &st.device, key: &key })
+        let f = folder::Folder { dir: &dir, me: &st.device, key: &key };
+        let n = folder::push(&st.db, &st.data_dir, &f)?;
+        if n > 0 {
+            let _ = folder::heartbeat(&f, &cfg.name);
+        }
+        Ok(n)
     })
     .await
     .map_err(err)?

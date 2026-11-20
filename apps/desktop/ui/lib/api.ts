@@ -66,6 +66,8 @@ export interface Settings {
   widget_glass: boolean;
   /** 毛玻璃深浅 0–100，越大越像磨砂，50 是默认 */
   widget_glass_level: number;
+  /** 网盘文件夹同步：没有改动时隔几小时更新一次「最后出现的时间」，1 / 6 / 12（只属于这台电脑） */
+  folder_beat_hours: number;
   /** 启动器（只属于这台电脑） */
   launcher: LaunchConfig;
   /** 自动检查更新（只属于这台电脑） */
@@ -751,7 +753,8 @@ export const api = {
   /** 今天在哪台电脑上收尾过了 */
   wrapStatus: () => invoke<boolean>("wrap_status"),
   wrapDone: () => invoke<void>("wrap_done"),
-  fitWindow: (height: number) => invoke<void>("fit_window", { height }),
+  /** 窗口跟着网页的高度变；带上 devicePixelRatio，Windows「文本大小」把网页放大了的话窗口跟着大（win.rs 的 page_scale） */
+  fitWindow: (height: number) => invoke<void>("fit_window", { height, dpr: devicePixelRatio }),
   /** 显示这个窗口但不抢焦点（提醒卡片、开场白、收尾） */
   showQuiet: () => invoke<void>("show_quiet"),
   /** 快捷框拖完了，记下位置 */
@@ -764,7 +767,7 @@ export const api = {
   launcherResolve: (paths: string[]) => invoke<LaunchConfig["custom"]>("launcher_resolve", { paths }),
   /** 桌面组件画好了，或者换了外观：设置里开了毛玻璃就上毛玻璃（tint 是叠在上面的颜色 r g b a），摆好位置并显示。
    *  回是不是毛玻璃（没开、Windows 10、系统不支持时是 false，网页画不透明的卡片） */
-  widgetShow: (tint: [number, number, number, number]) => invoke<boolean>("widget_show", { tint }),
+  widgetShow: (tint: [number, number, number, number]) => invoke<boolean>("widget_show", { tint, dpr: devicePixelRatio }),
   /** 移动位置后记住；reset 时放回右上角 */
   widgetPlace: (reset = false) => invoke<void>("widget_place", { reset }),
   widgetOff: () => invoke<void>("widget_off"),

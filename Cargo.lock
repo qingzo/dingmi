@@ -1005,7 +1005,7 @@ dependencies = [
 
 [[package]]
 name = "dingmi"
-version = "1.0.11"
+version = "1.0.12"
 dependencies = [
  "argon2",
  "base64 0.22.1",
@@ -1044,7 +1044,7 @@ dependencies = [
 
 [[package]]
 name = "dingmi-server"
-version = "1.0.11"
+version = "1.0.12"
 dependencies = [
  "base64 0.22.1",
  "chrono",
