@@ -7,10 +7,10 @@ import { mascotOn, scaleWithFontSize } from "../lib/look";
 import { getVersion } from "@tauri-apps/api/app";
 import { listen } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
-import { picKey, type Pic } from "../lib/quick";
+import { picCat, picKey, type Pic } from "../lib/quick";
 import {
   api, errText, newNote, newReminder, type AttachmentInfo, type Checklist, type ChecklistId, type FocusInfo, type InboxEntry, type Nav, type Note, type Reminder, type Repeat,
-  type RepeatKind, type Settings, type SyncStatus, type Tag, type TermsView, type TrashKind, type UpdateStatus,
+  type RepeatKind, type Settings, type SyncStatus, type Tag, type TagDef, type TermsView, type TrashKind, type UpdateStatus,
 } from "../lib/api";
 import { attachmentSrc, detailText, findTables, highlight, inline, joinSubs, plain, renderMd, setAttachmentDir, setFileInfo, setFileSaveButton, setTableGridButton, setTodo, shrunkMuch, snippet, splitSubs, subsLabel, todos, type Sub } from "@shared/md";
 import { captureDrafts, tableClick, tableInput, tableKey, tableStates, type TableCtx } from "@shared/tables";
@@ -26,8 +26,9 @@ import { dayDiff, whenText } from "../lib/when";
 import { icon, type IconName } from "@shared/icons";
 import { appIcon, cat, type CatMood } from "@shared/mascot";
 import {
-  $, $$, addDays, ago, copyText, dayStr, debounce, esc, fireAt, fmtDT, greeting, hotkeyText, isLate, isRecurring, isUndated, NO_DATE, noteCatDef, noteCatHtml,
-  noteCatList, parseDT, repeatLabel, setNoteCats, setTags, tagColor, tagHtml, tagList, timeOf, weekdayCn,
+  $, $$, addDays, ago, copyText, dayStr, debounce, durText, esc, fireAt, fmtDT, greeting, hotkeyText, isLate, isRecurring, isRunning, isUndated, MAX_NOTE_CATS, MAX_NOTE_DEPTH, NO_DATE,
+  noteCatAll, noteCatDef, noteCatDepth, noteCatHtml, noteCatKids, noteCatList, noteCatPath, noteCatUp, parseDT, repeatLabel, runMs, setNoteCats, setTags, TAG_COLORS, tagColor, tagHtml, tagList, timeOf,
+  weekdayCn,
 } from "@shared/util";
 import { readRepeatExtras, REPEAT_KINDS, repeatExtrasHtml, showRepeatExtras } from "@shared/repeat-edit";
 import { armed, hideModal, hooks, M, modalOpen, S, type View } from "./main-state";
@@ -203,7 +204,9 @@ function todayData() {
   const now = new Date();
   const tk = todayKey();
   const tm = dayStr(addDays(now, 1));
-  const active = S.reminders.filter((r) => !r.done && !isUndated(r));
+  // 正在做的（点了「开始做」，需求-1.x 第 45.2 节）单独放在最上面
+  const running = S.reminders.filter((r) => isRunning(r));
+  const active = S.reminders.filter((r) => !r.done && !isUndated(r) && !isRunning(r));
   const late = active.filter((r) => isLate(r, now)).sort(byFire);
   const today = active.filter((r) => fireAt(r).slice(0, 10) === tk && !isLate(r, now)).sort(byFire);
   const doneToday = S.reminders.filter(
@@ -211,19 +214,24 @@ function todayData() {
   );
   const tomorrow = active.filter((r) => fireAt(r).slice(0, 10) === tm).sort(byFire);
   // 待办：没定时间的，先记的在前
-  const undated = S.reminders.filter((r) => !r.done && isUndated(r)).sort((a, b) => a.created_at.localeCompare(b.created_at));
-  return { late, today, doneToday, tomorrow, undated };
+  const undated = S.reminders.filter((r) => !r.done && isUndated(r) && !isRunning(r)).sort((a, b) => a.created_at.localeCompare(b.created_at));
+  return { running, late, today, doneToday, tomorrow, undated };
 }
 
 const count = (n: number) => (n ? String(n) : "");
 const matchTag = (r: Reminder, t: Tag) => r.tag === t || (t === "cycle" && isRecurring(r.repeat));
 
 function renderCounts() {
-  const { late, today } = todayData();
+  const { running, late, today } = todayData();
   const active = S.reminders.filter((r) => !r.done);
-  $("#n-today").textContent = count(late.length + today.length);
+  $("#n-today").textContent = count(running.length + late.length + today.length);
   $("#n-rem").textContent = count(active.length);
   $("#n-notes").textContent = count(S.notes.length);
+  // 在笔记本页，侧栏下面那组换成笔记文件夹（需求-1.x 第 45.3 节）
+  const nb = S.view === "notes";
+  $("#tags-sec").hidden = $("#side-tags").hidden = nb;
+  $("#nf-sec").hidden = $("#side-folders").hidden = !nb;
+  if (nb) renderFolders();
   // 侧栏的提醒分类：点一下只看这一类
   $("#side-tags").innerHTML = tagList()
     .map((t) => {
@@ -249,7 +257,7 @@ const noteImages = (body: string) => [...body.matchAll(/!\[[^\]]*\]\(att:([\w.-]
 
 /** 图片放进提醒关联的笔记（需求-1.x 第 42.6 节）：没有关联笔记就新建一条（标题同提醒）关联上 */
 async function addPicsToReminder(r: Reminder, pics: Pic[]) {
-  let n = linkedNote(r) ?? (await api.saveNote(newNote({ title: r.title, reminder_id: r.id })));
+  let n = linkedNote(r) ?? (await api.saveNote(newNote({ title: r.title, tag: picCat(S.settings), reminder_id: r.id })));
   const md: string[] = [];
   for (const p of pics) md.push(`![](att:${await api.saveAttachment(p.bytes, p.mime, n.uid, p.name)})`);
   n = (await api.getNote(n.id)) ?? n;
@@ -261,14 +269,15 @@ const linkedNote = (r: Reminder) => S.notes.find((n) => (r.note_uid ? n.uid === 
 
 /** 一行提醒：圆形完成勾、标题和补充说明、小图标、分类、时间；鼠标停上去时间换成改、推迟、删除 */
 function remRow(r: Reminder, o: { done?: boolean; loose?: boolean } = {}) {
-  const late = !o.done && isLate(r);
+  const running = !o.done && isRunning(r);
+  const late = !o.done && !running && isLate(r);
   const rec = isRecurring(r.repeat);
   const note = linkedNote(r);
   const pics = note ? noteImages(note.body).length : 0;
   const ico = (n: IconName, tip: string) => `<span class="ico" title="${esc(tip)}">${I(n)}</span>`;
   const icons = [
     note ? ico(pics ? "image" : "notebook-pen", r.note_uid ? T.fromNote(note.title) : pics ? T.withPics(note.title, pics) : T.withNote(note.title)) : "",
-    !o.done && r.snoozed_until ? ico("alarm-clock", T.snoozed(r.snooze_count)) : "",
+    !o.done && !running && r.snoozed_until ? ico("alarm-clock", T.snoozed(r.snooze_count)) : "",
     rec ? ico("repeat", repeatLabel(r.repeat, r.due_at)) : "",
     r.only_on.length ? ico("monitor", onlyOnLabel(r.only_on)) : "",
     r.state === 2 && !o.done ? ico("moon", T.held) : "",
@@ -279,15 +288,27 @@ function remRow(r: Reminder, o: { done?: boolean; loose?: boolean } = {}) {
     r.tag && !(rec && r.tag === "cycle") ? tagHtml(r.tag) : "",
   ].join("");
   const btn = (act: string, ic: IconName, tip: string) => `<button class="btn sm ghost icon" data-ract="${act}" title="${tip}" aria-label="${tip}">${I(ic)}</button>`;
-  // 待办没有时间，不能推迟
-  const acts = o.done ? "" : `<span class="hacts">${btn("edit", "pencil", T.edit)}${isUndated(r) ? "" : btn("snooze", "alarm-clock", T.snooze)}${btn("del", "trash-2", T.del)}</span>`;
-  const time = o.done ? doneTime(r) : remTime(r, o.loose);
+  // 待办没有时间，不能推迟；正在做的不推迟，可以放下
+  const acts = o.done
+    ? ""
+    : `<span class="hacts">${btn("edit", "pencil", T.edit)}${running ? `<button class="btn sm ghost" data-ract="drop" title="${T.dropTip}">${T.putDown}</button>` : isUndated(r) ? "" : btn("snooze", "alarm-clock", T.snooze)}${btn("del", "trash-2", T.del)}</span>`;
+  const time = o.done ? doneTime(r) : running ? runTag(r) : remTime(r, o.loose);
+  // 点过「开始做」的，做完了写用了多久
+  const used = o.done && r.used_sec ? `<span class="used num" title="${T.usedTip}">${I("timer")}${T.used(durText(r.used_sec))}</span>` : "";
+  const finish = running ? `<button class="btn sm runok" data-chk="${r.id}" data-done="0">${I("check")}${T.markDone}</button>` : "";
   const dt = detailText(r.detail);
   const subs = subsLabel(r.detail);
-  return `<div class="it${o.done ? " done" : ""}${r.id === editingRid ? " sel" : ""}" data-rid="${r.id}">
+  return `<div class="it${o.done ? " done" : ""}${running ? " run" : ""}${r.id === editingRid ? " sel" : ""}" data-rid="${r.id}">
     <button class="task${r.urgent && !o.done ? " urg" : ""}${o.done ? " on" : ""}" data-chk="${r.id}" data-done="${o.done ? 1 : 0}" aria-label="${o.done ? T.undoDone : T.markDone}">${I("check")}</button>
-    <span class="t">${esc(r.title)}${dt ? `<small>${esc(dt)}</small>` : ""}</span>${subs ? `<span class="subc num" title="${T.d.subs}">${I("square-check")}${subs}</span>` : ""}${icons}${tags}<span class="tm num${late ? " late" : ""}">${time}</span>${acts}</div>`;
+    <span class="t">${esc(r.title)}${dt ? `<small>${esc(dt)}</small>` : ""}</span>${subs ? `<span class="subc num" title="${T.d.subs}">${I("square-check")}${subs}</span>` : ""}${icons}${tags}${used}<span class="tm num${late ? " late" : ""}${running ? " runtm" : ""}">${time}</span>${finish}${acts}</div>`;
 }
+
+/** 正在做：「● 正在做 25 分钟」，每半分钟跟着走（tickRunning） */
+const runTag = (r: Reminder) => `<span class="pulse"></span><span data-run="${esc(r.started_at ?? "")}">${T.running(durText(runMs(r) / 1000))}</span>`;
+function tickRunning() {
+  $$<HTMLElement>("[data-run]").forEach((el) => (el.textContent = T.running(durText(runMs({ started_at: el.dataset.run }) / 1000))));
+}
+setInterval(tickRunning, 30000);
 
 /** 一组：组名（过点了是红的）、几条 */
 function grp(title: string, rows: string, o: { n?: number; late?: boolean } = {}) {
@@ -314,8 +335,8 @@ function flashKeys() {
 function renderToday() {
   const now = new Date();
   const mascot = mascotOn();
-  const { late, today, doneToday, tomorrow, undated } = todayData();
-  const left = late.length + today.length;
+  const { running, late, today, doneToday, tomorrow, undated } = todayData();
+  const left = running.length + late.length + today.length;
   $("#greet").textContent = greeting(now.getHours());
   $("#today-sub").textContent = T.todaySub(dateCn(now), weekdayCn(now), left);
   capHint();
@@ -327,7 +348,9 @@ function renderToday() {
     .map((x) => remRow(x.r, { done: x.done }))
     .join("");
   const tmDate = addDays(now, 1);
-  const recent = S.notes.slice(0, 3);
+  // 「全部」里不显示的提醒附图，这里也不显示
+  const hide = hiddenCat();
+  const recent = S.notes.filter((n) => !hide || n.tag !== hide).slice(0, 3);
   // 待办：放几件，多的去提醒页看
   const UNDATED_MAX = 5;
   const undatedGrp = undated.length
@@ -338,7 +361,8 @@ function renderToday() {
         { n: undated.length },
       )
     : "";
-  let html = late.length ? grp(T.late, late.map((r) => remRow(r)).join(""), { late: true }) : "";
+  let html = running.length ? grp(T.runningH, running.map((r) => remRow(r)).join("")) : "";
+  html += late.length ? grp(T.late, late.map((r) => remRow(r)).join(""), { late: true }) : "";
   if (left) {
     html += grp(T.today, todayRows);
     if (tomorrow.length) html += grp(T.tomorrowFull(dateCn(tmDate), weekdayCn(tmDate)), tomorrow.map((r) => remRow(r)).join(""));
@@ -1102,7 +1126,7 @@ function openNoteDraft(it: Extract<ParsedItem, { type: "note" }>, done: (n: Extr
     <div class="db">
       <label class="fl"><span>${T.d.title}</span><input class="field big" id="nd-title" value="${esc(it.title)}"></label>
       <label class="fl"><span>${T.d.body}</span><textarea class="field" id="nd-body" rows="10">${esc(it.body)}</textarea></label>
-      <div class="fl"><span>${T.d.cat}</span><div class="rowf" id="nd-tags">${catChips(noteCatList(), it.tag)}${newCatButton("chipsel")}</div></div>
+      <div class="fl"><span>${T.d.cat}</span><div class="rowf" id="nd-tags">${catChips(noteCatList().map((c) => ({ ...c, name: noteCatPath(c.id) })), it.tag)}${newCatButton("chipsel")}</div></div>
     </div>
     <div class="df"><span class="sp"></span><button type="button" class="btn" data-dclose>${T.cancel}</button><button type="submit" class="btn pri">${T.d.done}</button></div>`);
   drawer.onclick = (e) => {
@@ -1274,6 +1298,7 @@ $("#main").addEventListener("click", async (e) => {
   if (ract && r) {
     if (ract.dataset.ract === "snooze") return snoozeMenu(ract, r.id);
     if (ract.dataset.ract === "del") return void deleteReminder(r.id);
+    if (ract.dataset.ract === "drop") return void api.reminderAction(r.id, "drop").then(() => say(T.dropped(r.title)), (err) => say(errText(err)));
   }
   if (r) return openEditor(structuredClone(r));
   const on = el.closest<HTMLElement>("[data-open-note]");
@@ -1337,7 +1362,9 @@ function renderReminders() {
       [T.thisWeek, (r) => fireAt(r).slice(0, 10) > day(1) && fireAt(r).slice(0, 10) < day(7), false],
       [T.later2, (r) => fireAt(r).slice(0, 10) >= day(7), false],
     ];
-    let rest = todo.filter((r) => !isUndated(r)).sort(byFire);
+    const running = todo.filter((r) => isRunning(r));
+    if (running.length) html += grp(T.runningH, running.map((r) => remRow(r)).join(""));
+    let rest = todo.filter((r) => !isUndated(r) && !isRunning(r)).sort(byFire);
     for (const [title, test, late] of buckets) {
       const rows = rest.filter(test);
       rest = rest.filter((r) => !test(r));
@@ -1378,23 +1405,34 @@ $(".sbar").addEventListener("click", (e) => {
 
 // ---------- 笔记本：左边列表，右边正文；顶上切「笔记 / 待办」 ----------
 
+/** 「全部」里不显示的分类：放提醒图片的那个（需求-1.x 第 45 节）；设置里打开「『全部』里也显示」就没有 */
+const hiddenCat = () => (S.settings?.pic_cat_all ? null : picCat(S.settings));
+
 function filteredNotes() {
   const q = S.q.trim().toLowerCase();
-  const inCat = S.nCat === "all" ? S.notes : S.notes.filter((n) => (S.nCat === "none" ? !noteCatDef(n.tag) : n.tag === S.nCat));
+  // 搜的时候照样搜得到
+  const hide = q ? null : hiddenCat();
+  // 选了文件夹：连下面几层一起（需求-1.x 第 45.3 节）
+  const inFolder = S.nCat === "all" || S.nCat === "none" ? [] : noteCatAll(S.nCat);
+  const inCat = S.nCat === "all" ? S.notes.filter((n) => !hide || n.tag !== hide) : S.notes.filter((n) => (S.nCat === "none" ? !noteCatDef(n.tag) : !!n.tag && inFolder.includes(n.tag)));
   return q ? inCat.filter((n) => n.title.toLowerCase().includes(q) || n.body.toLowerCase().includes(q)) : inCat;
 }
 
-/** 笔记本列表上面那一排：全部、各个笔记分类、没分类的（有的话）。点一下筛，再点一下回到全部 */
+/** 笔记本列表上面那一排：全部、各个笔记分类、没分类的（有的话）。点一下筛，再点一下回到全部。「全部」里不显示的那个分类后面带上篇数 */
 function renderNoteCats() {
   if (S.nCat !== "all" && S.nCat !== "none" && !noteCatDef(S.nCat)) S.nCat = "all";
   const none = S.notes.filter((x) => !noteCatDef(x.tag)).length;
+  const hide = hiddenCat();
   const items: [string, string, string][] = [
     ["all", T.all, ""],
-    ...noteCatList().map((t) => [t.id, t.name, tagColor(t.color)] as [string, string, string]),
+    ...noteCatList().map((t) => [t.id, noteCatPath(t.id), tagColor(t.color)] as [string, string, string]),
     ...(none && none < S.notes.length ? [["none", T.noCat, ""] as [string, string, string]] : []),
   ];
   $("#nb-cats").innerHTML = items
-    .map(([id, name, color]) => `<button class="nbc" data-ncat="${esc(id)}" ${color ? `style="${color}"` : ""} aria-pressed="${S.nCat === id}">${color ? '<i class="sq"></i>' : ""}${esc(name)}</button>`)
+    .map(
+      ([id, name, color]) =>
+        `<button class="nbc" data-ncat="${esc(id)}" ${color ? `style="${color}"` : ""} aria-pressed="${S.nCat === id}">${color ? '<i class="sq"></i>' : ""}${esc(name)}${id === hide ? `<small>${S.notes.filter((n) => n.tag === id).length}</small>` : ""}</button>`,
+    )
     .join("");
 }
 
@@ -1404,6 +1442,289 @@ $("#nb-cats").addEventListener("click", (e) => {
   if (S.editing) finishEdit();
   S.nCat = c.dataset.ncat === S.nCat ? "all" : c.dataset.ncat!;
   renderNotes();
+});
+
+/** 升级时把提醒的图片笔记搬进了「提醒附图」：笔记本顶上说一声，点「知道了」或「改设置」就不再说 */
+function renderNoteTip() {
+  const s = S.settings;
+  const cat = noteCatDef(picCat(s));
+  const tip = $("#nb-tip");
+  tip.hidden = !s?.pic_cat_moved || !cat;
+  tip.innerHTML = tip.hidden ? "" : `${I("info")}<div>${esc(T.picMoved(s!.pic_cat_moved, cat!.name, !s!.pic_cat_all))}</div><button class="btn sm ghost" data-tip="set">${T.picMovedSet}</button><button class="btn sm ghost" data-tip="ok">${T.gotIt}</button>`;
+}
+
+$("#nb-tip").addEventListener("click", (e) => {
+  const b = (e.target as HTMLElement).closest<HTMLElement>("[data-tip]");
+  if (!b || !S.settings) return;
+  S.settings.pic_cat_moved = 0;
+  void api.saveSettings(S.settings).catch(() => {});
+  renderNoteTip();
+  if (b.dataset.tip === "set") openSettings("notes", "pic_cat");
+});
+
+// ---------- 笔记文件夹：在笔记本页，侧栏下面那组换成文件夹树（需求-1.x 第 45.3 节） ----------
+
+// 收起了哪几个文件夹，只记在这台电脑的这个窗口里
+const NF_CLOSED = "nf-closed";
+let nfClosed = new Set<string>();
+try {
+  nfClosed = new Set(JSON.parse(localStorage.getItem(NF_CLOSED) ?? "[]"));
+} catch {
+  /* 读不到就都展开 */
+}
+/** 正在新建（在哪个文件夹下面，null 是最外层）或者改名的那个 */
+let nfEdit: { mode: "new"; parent: string | null } | { mode: "ren"; id: string } | null = null;
+/** 正在重画文件夹树：输入框被换掉时的 focusout 不算写完 */
+let nfDrawing = false;
+
+/** 文件夹里（连下面几层）有几篇 */
+const nfCount = (id: string) => {
+  const all = noteCatAll(id);
+  return S.notes.filter((n) => !!n.tag && all.includes(n.tag)).length;
+};
+
+function renderFolders() {
+  const box = $("#side-folders");
+  const hide = hiddenCat();
+  // 写到一半被重画（同步来了数据）：接着写
+  const key = nfEdit ? (nfEdit.mode === "new" ? `new:${nfEdit.parent ?? ""}` : `ren:${nfEdit.id}`) : "";
+  const prev = box.querySelector<HTMLInputElement>("#nf-in");
+  const kept = prev && key && prev.dataset.k === key ? prev.value : null;
+  const input = (v = "") =>
+    `<input class="field nfin" id="nf-in" data-k="${esc(key)}" value="${esc(kept ?? v)}" maxlength="8" placeholder="${T.nfPh}" aria-label="${T.nfPh}">`;
+  const newRow = (parent: string | null, d: number, color: string) =>
+    nfEdit?.mode === "new" && nfEdit.parent === parent ? `<div class="sb-cat nfr" style="${tagColor(color)};--d:${d}"><span class="cv"></span><span class="sq"></span>${input()}</div>` : "";
+  const row = (t: TagDef): string => {
+    const d = noteCatDepth(t.id);
+    const kids = noteCatKids(t.id);
+    const open = !nfClosed.has(t.id);
+    const ren = nfEdit?.mode === "ren" && nfEdit.id === t.id;
+    return (
+      `<div class="sb-cat nfr${S.nCat === t.id ? " on" : ""}" data-nf="${esc(t.id)}" data-nfdrop="${esc(t.id)}" draggable="${!ren}" role="treeitem" tabindex="0" ${kids.length ? `aria-expanded="${open}"` : ""} style="${tagColor(t.color)};--d:${d}" title="${esc(noteCatPath(t.id))}">
+        <span class="cv" data-nftog="${esc(t.id)}">${kids.length ? I(open ? "chevron-down" : "chevron-right") : ""}</span><span class="sq"></span>${
+          ren ? input(t.name) : `<span class="lb">${esc(t.name)}</span><span class="n num">${count(nfCount(t.id))}</span><button class="more" data-nfmenu="${esc(t.id)}" title="${T.nfMore}" aria-label="${T.nfMore}">${I("ellipsis")}</button>`
+        }</div>` +
+      (open ? kids.map(row).join("") : "") +
+      newRow(t.id, d + 1, t.color)
+    );
+  };
+  const top = (id: "all" | "none", ic: IconName, name: string, n: number) =>
+    `<div class="sb-cat nfr top${S.nCat === id ? " on" : ""}" data-nf="${id}" data-nfdrop="${id}" role="treeitem" tabindex="0"><span class="cv">${I(ic)}</span><span class="lb">${name}</span><span class="n num">${count(n)}</span></div>`;
+  const none = S.notes.filter((n) => !noteCatDef(n.tag)).length;
+  nfDrawing = true;
+  box.innerHTML =
+    top("all", "layers", T.nfAll, S.notes.filter((n) => !hide || n.tag !== hide).length) +
+    noteCatKids(null).map(row).join("") +
+    newRow(null, 0, "gray") +
+    (none ? top("none", "inbox", T.nfNone, none) : "");
+  nfDrawing = false;
+  const inp = box.querySelector<HTMLInputElement>("#nf-in");
+  if (inp) {
+    inp.focus();
+    if (kept === null) inp.select();
+  }
+}
+
+/** 选一个文件夹：笔记本里只看它（连下面几层） */
+function pickFolder(id: string) {
+  if (S.editing) finishEdit();
+  S.nCat = id;
+  if (S.view !== "notes") return go("notes");
+  renderNotes();
+}
+
+/** 笔记分类改了：存进设置（几台电脑共用），各处跟着刷新 */
+async function saveNoteCats(list: TagDef[]) {
+  if (!S.settings) return;
+  S.settings.note_cats = list;
+  setNoteCats(list);
+  try {
+    await api.saveSettings(S.settings);
+  } catch (err) {
+    say(errText(err));
+  }
+  renderAll();
+}
+
+/** 新建、改名写完了：同一层不能重名 */
+async function nfCommit() {
+  const e = nfEdit;
+  const name = $<HTMLInputElement>("#nf-in")?.value.trim() ?? "";
+  nfEdit = null;
+  if (!e || !name) return renderFolders();
+  const list = noteCatList();
+  const parent = e.mode === "new" ? e.parent : (noteCatDef(e.id)?.parent ?? null);
+  const same = (t: TagDef) => (parent ? t.parent === parent : !noteCatUp(t.id));
+  if (list.some((t) => same(t) && t.name === name && (e.mode === "new" || t.id !== e.id))) {
+    say(T.nfTaken(name));
+    return renderFolders();
+  }
+  if (e.mode === "ren") return saveNoteCats(list.map((t) => (t.id === e.id ? { ...t, name } : t)));
+  if (list.length >= MAX_NOTE_CATS) {
+    say(T.nfFull(MAX_NOTE_CATS));
+    return renderFolders();
+  }
+  // 子文件夹跟上一层同一个颜色；最外层的挑一个还没用过的
+  const used = new Set(list.map((t) => t.color));
+  const color = parent ? (noteCatDef(parent)?.color ?? "gray") : (TAG_COLORS.find((c) => !used.has(c)) ?? "gray");
+  const id = "t" + Date.now().toString(36) + Math.random().toString(36).slice(2, 5);
+  if (parent) nfClosed.delete(parent);
+  await saveNoteCats([...list, { id, name, color, ...(parent ? { parent } : {}) }]);
+}
+
+function saveClosed() {
+  try {
+    localStorage.setItem(NF_CLOSED, JSON.stringify([...nfClosed]));
+  } catch {
+    /* 存不了就只管这一次 */
+  }
+}
+
+/** 文件夹的「⋯」：新建子文件夹、改名、换颜色、删除 */
+function folderMenu(btn: HTMLElement, id: string) {
+  const t = noteCatDef(id);
+  if (!t) return;
+  const deep = noteCatDepth(id) >= MAX_NOTE_DEPTH - 1;
+  const up = noteCatUp(id);
+  menu.innerHTML = `<button class="mi" data-fm="new" ${deep ? "disabled" : ""}>${I("folder-plus")}${T.nfNewSub}${deep ? `<small class="mut">${T.nfMaxDepth}</small>` : ""}</button>
+    <button class="mi" data-fm="ren">${I("pencil")}${T.nfRename}</button>
+    <div class="nfsw" role="group" aria-label="${T.nfColor}">${TAG_COLORS.map((c) => `<button data-fmc="${c}" style="${tagColor(c)}" aria-pressed="${c === t.color}" aria-label="${c}"></button>`).join("")}</div>
+    <button class="mi danger" data-fm="del">${I("trash-2")}${T.nfDel}</button>`;
+  placeMenu(btn);
+  menu.onclick = async (e) => {
+    const el = e.target as HTMLElement;
+    const c = el.closest<HTMLElement>("[data-fmc]");
+    if (c) {
+      closeMenu();
+      return saveNoteCats(noteCatList().map((x) => (x.id === id ? { ...x, color: c.dataset.fmc! } : x)));
+    }
+    const b = el.closest<HTMLButtonElement>("[data-fm]");
+    if (!b || b.disabled) return;
+    if (b.dataset.fm === "del") {
+      if (!armed(b, T.nfDelSure(up?.name ?? T.nfNone))) return;
+      closeMenu();
+      // 正看着它：删完看上一层（看着它下面的，那个文件夹还在，不动）
+      const here = S.nCat === id;
+      try {
+        const n = await api.deleteNoteFolder(id);
+        if (here) {
+          S.nCat = up?.id ?? "all";
+          renderNotes();
+        }
+        say(T.nfDeleted(t.name, n, up?.name ?? T.nfNone));
+      } catch (err) {
+        say(errText(err));
+      }
+      return;
+    }
+    closeMenu();
+    if (b.dataset.fm === "new") {
+      nfClosed.delete(id);
+      nfEdit = { mode: "new", parent: id };
+    } else nfEdit = { mode: "ren", id };
+    renderFolders();
+  };
+}
+
+$("#nf-new").addEventListener("click", () => {
+  nfEdit = { mode: "new", parent: null };
+  renderFolders();
+});
+
+$("#side-folders").addEventListener("click", (e) => {
+  const el = e.target as HTMLElement;
+  if (el.closest("#nf-in")) return;
+  const m = el.closest<HTMLElement>("[data-nfmenu]");
+  if (m) return folderMenu(m, m.dataset.nfmenu!);
+  const tg = el.closest<HTMLElement>("[data-nftog]");
+  if (tg && noteCatKids(tg.dataset.nftog!).length) {
+    const id = tg.dataset.nftog!;
+    if (!nfClosed.delete(id)) nfClosed.add(id);
+    saveClosed();
+    return renderFolders();
+  }
+  const f = el.closest<HTMLElement>("[data-nf]");
+  if (f) pickFolder(f.dataset.nf!);
+});
+
+$("#side-folders").addEventListener("keydown", (e) => {
+  const el = e.target as HTMLElement;
+  if (e.isComposing) return;
+  if (el.id === "nf-in") {
+    if (e.key === "Enter") void nfCommit();
+    else if (e.key === "Escape") {
+      e.stopPropagation();
+      nfEdit = null;
+      renderFolders();
+    }
+    return;
+  }
+  const f = el.closest<HTMLElement>("[data-nf]");
+  if (f && (e.key === "Enter" || e.key === " ")) {
+    e.preventDefault();
+    pickFolder(f.dataset.nf!);
+  }
+});
+
+// 写名字时点到别处：照样存
+$("#side-folders").addEventListener("focusout", (e) => {
+  if ((e.target as HTMLElement).id === "nf-in" && nfEdit && !nfDrawing) void nfCommit();
+});
+
+// 拖动：笔记拖到文件夹上换地方，文件夹拖进别的文件夹（拖到「全部」上是挪到最外层）
+let dragging: { note: number } | { folder: string } | null = null;
+document.addEventListener("dragstart", (e) => {
+  const el = e.target as HTMLElement;
+  const n = el.closest?.<HTMLElement>("#nb-items [data-nid]");
+  const f = el.closest?.<HTMLElement>("#side-folders [data-nf]");
+  dragging = n ? { note: Number(n.dataset.nid) } : f && noteCatDef(f.dataset.nf) ? { folder: f.dataset.nf! } : null;
+  if (!dragging || !e.dataTransfer) return;
+  e.dataTransfer.effectAllowed = "move";
+  e.dataTransfer.setData("text/plain", "");
+});
+document.addEventListener("dragend", () => {
+  dragging = null;
+  $$(".nfr.drop").forEach((x) => x.classList.remove("drop"));
+});
+$("#side-folders").addEventListener("dragover", (e) => {
+  const d = (e.target as HTMLElement).closest<HTMLElement>("[data-nfdrop]");
+  if (!d || !dragging) return;
+  e.preventDefault();
+  $$(".nfr.drop").forEach((x) => x !== d && x.classList.remove("drop"));
+  d.classList.add("drop");
+});
+$("#side-folders").addEventListener("dragleave", (e) => {
+  const d = (e.target as HTMLElement).closest<HTMLElement>("[data-nfdrop]");
+  if (d && !d.contains(e.relatedTarget as Node)) d.classList.remove("drop");
+});
+$("#side-folders").addEventListener("drop", async (e) => {
+  const d = (e.target as HTMLElement).closest<HTMLElement>("[data-nfdrop]");
+  const what = dragging;
+  dragging = null;
+  $$(".nfr.drop").forEach((x) => x.classList.remove("drop"));
+  if (!d || !what) return;
+  e.preventDefault();
+  const to = d.dataset.nfdrop === "all" || d.dataset.nfdrop === "none" ? null : d.dataset.nfdrop!;
+  if ("note" in what) {
+    const n = S.notes.find((x) => x.id === what.note);
+    if (!n || (n.tag ?? null) === to) return;
+    try {
+      await api.setNoteTag(n.id, to);
+      say(T.nfMoved(n.title || T.blankNote, to ? noteCatPath(to) : T.nfNone));
+    } catch (err) {
+      say(errText(err));
+    }
+    return;
+  }
+  const f = noteCatDef(what.folder);
+  if (!f || (f.parent ?? null) === to || f.id === to) return;
+  if (to && noteCatAll(f.id).includes(to)) return say(T.nfIntoSelf);
+  // 拖过去以后最深的一层不能超过 3 层
+  const height = (id: string): number => 1 + Math.max(0, ...noteCatKids(id).map((k) => height(k.id)));
+  if (to && noteCatDepth(to) + 1 + height(f.id) > MAX_NOTE_DEPTH) return say(T.nfTooDeep);
+  if (to) nfClosed.delete(to);
+  await saveNoteCats(noteCatList().map((x) => (x.id === f.id ? { ...x, parent: to ?? undefined } : x)));
+  say(T.nfFolderMoved(f.name, to ? noteCatPath(to) : ""));
 });
 
 /** 主窗口里的「新笔记」「记一条笔记」：在笔记本里直接写（快速记笔记小窗口留给快捷键和托盘）。
@@ -1453,6 +1774,8 @@ $("#nb-look").addEventListener("click", (e) => {
 
 function renderNotes() {
   renderNoteCats();
+  renderNoteTip();
+  if (S.view === "notes") renderFolders();
   $$("#nb-look [data-nblook]").forEach((b) => b.setAttribute("aria-pressed", String((b.dataset.nblook === "titles") === nbTitles)));
   const q = S.q.trim();
   const ql = q.toLowerCase();
@@ -1461,22 +1784,29 @@ function renderNotes() {
   // 搜的时候要看正文里搜到的那段，照旧完整显示
   $("#nb-items").classList.toggle("titles", nbTitles && !q);
   if (!freshNote && !(S.editing && edNote?.id === S.noteId) && list.length && !list.some((n) => n.id === S.noteId)) S.noteId = list[0].id;
+  // 「全部」里没显示的（提醒附图）：列表最后说一声，点了只看它们
+  const hide = !q && S.nCat === "all" ? hiddenCat() : null;
+  const hidden = hide ? S.notes.filter((n) => n.tag === hide).length : 0;
+  const more = hidden ? `<p class="none nbhid">${I("eye-off")}<span>${esc(T.picHidden(hidden, noteCatDef(hide)!.name))}</span><button class="lnk" data-ncat="${esc(hide!)}">${T.picSee}</button></p>` : "";
   $("#nb-items").innerHTML = list.length
     ? list
         .map((n) => {
           const inBody = !!q && !n.title.toLowerCase().includes(ql);
           const cat = noteCatDef(n.tag);
-          return `<button class="nbi${n.id === S.noteId && !freshNote ? " on" : ""}" data-nid="${n.id}" ${cat ? `style="${tagColor(cat.color)}"` : ""} title="${T.dblOpen}">
+          const text = snippet(n.body, q, 80);
+          // 只有图片的（提醒加图片时建的那种）：显示前三张小图
+          const pics = q || n.body.replace(/!\[[^\]]*\]\(att:[\w.-]+\)/g, "").trim() ? [] : noteImages(n.body).slice(0, 3);
+          return `<button class="nbi${n.id === S.noteId && !freshNote ? " on" : ""}" data-nid="${n.id}" draggable="true" ${cat ? `style="${tagColor(cat.color)}"` : ""} title="${T.dblOpen}">
             <b>${cat ? `<span class="sq" title="${esc(cat.name)}"></span>` : ""}<span class="tt">${highlight(esc(n.title || T.blankNote), q)}</span>${n.pinned_at ? I("pin", "pin") : ""}</b>
-            <small class="${inBody ? "hit" : ""}">${snippet(n.body, q, 80) || T.blankNote}</small>
+            ${pics.length ? `<span class="nbpics">${pics.map((f) => `<img src="${esc(attachmentSrc(f))}" alt="" loading="lazy">`).join("")}</span>` : `<small class="${inBody ? "hit" : ""}">${text || T.blankNote}</small>`}
             <span class="mt">${ago(n.updated_at)}${noteIcons(n)}</span></button>`;
         })
-        .join("")
+        .join("") + more
     : q
       ? emptyHtml("normal", T.notFound(mascotOn()), "", "nb-q")
-      : S.nCat !== "all" && S.notes.length
+      : more || (S.nCat !== "all" && S.notes.length
         ? `<p class="none">${T.catEmpty}</p>`
-        : emptyHtml("normal", T.nbEmpty, T.nbEmptySub(S.settings?.hk_qnote ? hotkeyText(S.settings.hk_qnote) : ""), "nb-empty");
+        : emptyHtml("normal", T.nbEmpty, T.nbEmptySub(S.settings?.hk_qnote ? hotkeyText(S.settings.hk_qnote) : ""), "nb-empty"));
   // 右边：只在看着笔记本时才放编辑器
   if (S.view === "notes") {
     if (S.editing) syncOpenNote();
@@ -1778,6 +2108,11 @@ $("#nb-search").addEventListener("input", (e) => {
 });
 // 单击打开（右边直接能改），双击在单独的窗口里编辑。第一下单击会重画列表，所以不用 dblclick（落在被换掉的元素上收不到），看点击次数
 $("#nb-items").addEventListener("click", (e) => {
+  const see = (e.target as HTMLElement).closest<HTMLElement>("[data-ncat]");
+  if (see) {
+    S.nCat = see.dataset.ncat!;
+    return renderNotes();
+  }
   const b = (e.target as HTMLElement).closest<HTMLElement>("[data-nid]");
   if (!b) return;
   const id = Number(b.dataset.nid);
@@ -1893,7 +2228,7 @@ function drawMeta() {
   const linked = n.reminder_id ? S.reminders.find((r) => r.id === n.reminder_id) : undefined;
   box.innerHTML = [
     // 没有笔记分类时也放：菜单里能直接加一个
-    `<button type="button" class="${cat ? "tag" : "tag nocat"}" data-nact="cat" style="${cat ? tagColor(cat.color) : ""}" title="${TN.catTip}" aria-haspopup="menu">${cat ? esc(cat.name) : `${I("plus")}${TN.noCat}`}</button>`,
+    `<button type="button" class="${cat ? "tag" : "tag nocat"}" data-nact="cat" style="${cat ? tagColor(cat.color) : ""}" title="${TN.catTip}" aria-haspopup="menu">${cat ? esc(noteCatPath(cat.id)) : `${I("plus")}${TN.noCat}`}</button>`,
     n.id ? `<span>${esc(TN.edited(ago(n.updated_at)))}</span>` : "",
     n.pinned_at ? `<span>${I("pin")}${T.pinned}</span>` : "",
     linked ? `<button type="button" class="lnk" data-nact="rem" title="${T.editRem}">${I("bell")}${esc(TN.linked(`${whenShort(fireAt(linked))} ${linked.title}`))}</button>` : "",
@@ -2168,7 +2503,7 @@ async function tidyNote(btn: HTMLButtonElement) {
 /** 笔记分类：一个小菜单 */
 function catMenu(btn: HTMLElement) {
   const list = noteCatList();
-  menu.innerHTML = `<button class="mi" data-cat="">${TN.catNone}</button>${list.map((c) => `<button class="mi" data-cat="${esc(c.id)}"><span class="tag" style="${tagColor(c.color)}">${esc(c.name)}</span>${c.id === edTag ? I("check") : ""}</button>`).join("")}${newCatButton("mi")}`;
+  menu.innerHTML = `<button class="mi" data-cat="">${TN.catNone}</button>${list.map((c) => `<button class="mi" data-cat="${esc(c.id)}" style="--d:${noteCatDepth(c.id)}"><span class="tag" style="${tagColor(c.color)}">${esc(c.name)}</span>${c.id === edTag ? I("check") : ""}</button>`).join("")}${newCatButton("mi")}`;
   placeMenu(btn);
   const pick = (id: string | null) => {
     closeMenu();

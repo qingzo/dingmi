@@ -465,6 +465,12 @@ fn save_reminder(app: AppHandle, window: WebviewWindow, st: tauri::State<AppStat
     if let Some(o) = &old {
         r.uid = o.uid.clone();
         r.snooze_count = o.snooze_count;
+        // 正在做的改了字、改了时间：照旧在做，到点问还在不在做（需求-1.x 第 45.2 节）
+        r.started_at = o.started_at.clone();
+        r.used_sec = o.used_sec;
+        if o.started_at.is_some() && !o.done {
+            r.snoozed_until = o.snoozed_until.clone();
+        }
         r.last_done_at = o.last_done_at.clone();
         r.created_at = o.created_at.clone();
         // 说得含糊先定的时间，改过就不再算含糊
@@ -494,9 +500,19 @@ fn delete_reminder(app: AppHandle, st: tauri::State<AppState>, id: i64) -> Res<(
     Ok(())
 }
 
+/// 「开始做」以后隔多久问一声还在不在做（需求-1.x 第 45.2 节）
+const ASK_STILL_HOURS: i64 = 4;
+const FMT_SEC: &str = "%Y-%m-%d %H:%M:%S";
+
 fn complete(r: &mut Reminder) {
     let now = Local::now().naive_local();
     let now_s = now.format(db::FMT).to_string();
+    // 点过「开始做」的：记下用了多久，完成那一行写「用了 25 分钟」
+    r.used_sec = r
+        .started_at
+        .take()
+        .and_then(|s| chrono::NaiveDateTime::parse_from_str(&s, FMT_SEC).ok())
+        .map(|s| (now - s).num_seconds().max(0));
     r.snoozed_until = None;
     r.state = ST_WAIT;
     if r.repeat.is_recurring() {
@@ -513,7 +529,18 @@ fn complete(r: &mut Reminder) {
     }
 }
 
-/// 提醒卡片或列表上的操作：done 完成 / snooze 稍后 / tomorrow 明天再说 / snooze_to 推迟到 until / undo 取消完成
+/// 正在做的那条点了「稍后」（几条一起弹时的「全部稍后」）：当成「还在做」，4 小时后再问，不是 10 分钟后又问一遍
+/// （和单独弹时点 ✕、按 Esc 一样，需求-1.x 第 45.2 节）
+fn effective_action<'a>(r: &Reminder, action: &'a str) -> &'a str {
+    if action == "snooze" && r.started_at.is_some() && !r.done {
+        "still"
+    } else {
+        action
+    }
+}
+
+/// 提醒卡片或列表上的操作：done 完成 / snooze 稍后 / tomorrow 明天再说 / snooze_to 推迟到 until / undo 取消完成 /
+/// start 开始做 / still 还在做 / drop 放下（不做了，回到普通提醒）
 #[tauri::command]
 fn reminder_action(
     app: AppHandle,
@@ -528,11 +555,12 @@ fn reminder_action(
     let c = st.db.lock().unwrap();
     let mut r = db::get_reminder(&c, id).map_err(err)?.ok_or("这条提醒已经不在了")?;
     let now = Local::now().naive_local();
+    let action = effective_action(&r, &action);
     // 待办没有时间，推迟了反而会到点弹出来
     if (action.starts_with("snooze") || action == "tomorrow") && db::is_undated(&r.due_at) {
         return Err("待办还没定时间，改一下定个时间就行".into());
     }
-    match action.as_str() {
+    match action {
         "done" => complete(&mut r),
         "snooze" => {
             r.snoozed_until = Some((now + Duration::minutes(snooze_min)).format(db::FMT).to_string());
@@ -558,10 +586,28 @@ fn reminder_action(
             r.snooze_count += 1;
             r.allday = false;
         }
+        // 开始做（需求-1.x 第 45.2 节）：开始计时，不再弹；过 4 小时弹一次问还在不在做
+        "start" => {
+            r.started_at = Some(now.format(FMT_SEC).to_string());
+            r.snoozed_until = Some((now + Duration::hours(ASK_STILL_HOURS)).format(db::FMT).to_string());
+            r.state = ST_WAIT;
+        }
+        "still" => {
+            r.snoozed_until = Some((now + Duration::hours(ASK_STILL_HOURS)).format(db::FMT).to_string());
+            r.state = ST_WAIT;
+        }
+        "drop" => {
+            r.started_at = None;
+            r.snoozed_until = None;
+            // 已经过点的不再弹，留在列表里
+            let past = db::parse_dt(&r.due_at).map(|d| d <= now).unwrap_or(true);
+            r.state = if past { ST_SEEN } else { ST_WAIT };
+        }
         "undo" => {
             if !r.repeat.is_recurring() {
                 r.done = false;
                 r.completed_at = None;
+                r.used_sec = None;
                 let past = db::parse_dt(r.fire_at()).map(|d| d <= now).unwrap_or(true);
                 r.state = if past { ST_SEEN } else { ST_WAIT };
             }
@@ -570,7 +616,7 @@ fn reminder_action(
     }
     db::upsert_reminder(&c, &r).map_err(err)?;
     // 从笔记待办设的提醒：笔记里那一行跟着勾上 / 取消
-    let tick = match action.as_str() {
+    let tick = match action {
         "done" if !r.repeat.is_recurring() => Some(true),
         "undo" if !r.repeat.is_recurring() => Some(false),
         _ => None,
@@ -688,6 +734,30 @@ fn delete_note(app: AppHandle, st: tauri::State<AppState>, id: i64) -> Res<()> {
     db::delete_note(&st.db.lock().unwrap(), id).map_err(err)?;
     notify_data(&app);
     Ok(())
+}
+
+/// 笔记拖进文件夹（需求-1.x 第 45.3 节）：只换分类，不算改过笔记
+#[tauri::command]
+fn set_note_tag(app: AppHandle, st: tauri::State<AppState>, id: i64, tag: Option<String>) -> Res<()> {
+    db::set_note_tag(&st.db.lock().unwrap(), id, tag.as_deref()).map_err(err)?;
+    notify_data(&app);
+    Ok(())
+}
+
+/// 删掉一个笔记文件夹（需求-1.x 第 45.3 节）：里面的笔记和子文件夹放回上一层，不删笔记；返回挪了几篇笔记
+#[tauri::command]
+fn delete_note_folder(app: AppHandle, st: tauri::State<AppState>, id: String) -> Res<usize> {
+    let mut s = st.settings.lock().unwrap().clone();
+    let up = settings::remove_note_cat(&mut s, &id).map_err(|_| "这个文件夹已经不在了")?;
+    let c = st.db.lock().unwrap();
+    settings::save(&c, &s).map_err(err)?;
+    let n = db::move_note_tag(&c, &id, up.as_deref()).map_err(err)?;
+    drop(c);
+    *st.settings.lock().unwrap() = s.clone();
+    st.sync.poke();
+    let _ = app.emit("settings-changed", &s);
+    notify_data(&app);
+    Ok(n)
 }
 
 /// 删掉了一个分类：用到它的提醒和笔记（包括回收站里的）变成没有分类，返回改了几条
@@ -1151,7 +1221,8 @@ fn get_settings(st: tauri::State<AppState>) -> Settings {
 
 // 下面几个命令可能会创建窗口，必须是 async：Windows 上在同步命令里建窗口会卡死
 #[tauri::command]
-async fn save_settings(app: AppHandle, st: tauri::State<'_, AppState>, settings: Settings) -> Res<()> {
+async fn save_settings(app: AppHandle, st: tauri::State<'_, AppState>, mut settings: Settings) -> Res<()> {
+    settings.fix_pic_cat();
     settings::save(&st.db.lock().unwrap(), &settings).map_err(err)?;
     let custom_changed = std::mem::replace(&mut *st.settings.lock().unwrap(), settings.clone()).launcher.custom != settings.launcher.custom;
     if custom_changed {
@@ -1179,6 +1250,12 @@ async fn save_settings(app: AppHandle, st: tauri::State<'_, AppState>, settings:
 
 /// 写东西时顺手加一个分类（改提醒的抽屉、笔记的分类菜单，需求-1.x 第 41 节）。只碰分类，所以笔记窗口也能用（不给它存整份设置）。
 /// field：tags 提醒分类 / note_cats 笔记分类；同名的已经有了就回那个；和设置页一样最多 12 个、名字 8 个字以内
+/// 顺手加分类时已经有了就用它。笔记文件夹只看最外层（新加的放在最外层）：别的文件夹里有同名的，
+/// 不悄悄放进那里，另建一个，到处都写全路径分得清（需求-1.x 第 45.3 节）
+fn same_new_cat(t: &settings::TagDef, name: &str) -> bool {
+    t.name == name && t.parent.is_none()
+}
+
 #[tauri::command]
 fn add_category(app: AppHandle, st: tauri::State<AppState>, field: String, name: String) -> Res<settings::TagDef> {
     const COLORS: [&str; 9] = ["blue", "orange", "pink", "purple", "green", "teal", "red", "amber", "gray"];
@@ -1192,15 +1269,18 @@ fn add_category(app: AppHandle, st: tauri::State<AppState>, field: String, name:
         "note_cats" => &mut s.note_cats,
         _ => return Err("不认识的分类".into()),
     };
-    if let Some(t) = list.iter().find(|t| t.name == name) {
+    if let Some(t) = list.iter().find(|t| same_new_cat(t, &name)) {
         return Ok(t.clone());
     }
-    if list.len() >= 12 {
+    if field == "note_cats" && list.len() >= settings::MAX_NOTE_CATS {
+        return Err(format!("笔记文件夹最多 {} 个，先删掉几个", settings::MAX_NOTE_CATS));
+    }
+    if field == "tags" && list.len() >= 12 {
         return Err("分类最多 12 个，先在「设置 → 分类」里删掉一个".into());
     }
     let color = COLORS.iter().find(|c| !list.iter().any(|t| t.color == **c)).unwrap_or(&"gray");
     let uid = uuid::Uuid::now_v7().simple().to_string();
-    let t = settings::TagDef { id: format!("t{}", &uid[uid.len() - 10..]), name, color: color.to_string(), sound: String::new() };
+    let t = settings::TagDef { id: format!("t{}", &uid[uid.len() - 10..]), name, color: color.to_string(), sound: String::new(), parent: None };
     list.push(t.clone());
     settings::save(&st.db.lock().unwrap(), &s).map_err(err)?;
     *st.settings.lock().unwrap() = s.clone();
@@ -2010,6 +2090,8 @@ pub fn run() {
             onboard::init(&conn, onboard::fresh(&conn))?;
             let show_onboard = onboard::pending(&conn);
             let mut settings: Settings = saved.unwrap_or_default();
+            // 先补上「提醒附图」：下面补建共用设置时不会传出一份缺了它的
+            settings::upgrade_pic_cat(&conn, &mut settings)?;
             settings::ensure_shared(&conn, &settings, &device)?;
             settings::upgrade_note_cats(&conn, &mut settings)?;
             // 刚搬过家：自己选的提示音记的是原来的完整路径，跟着换
@@ -2104,6 +2186,8 @@ pub fn run() {
             open_note_window,
             note_windows,
             clear_tag,
+            set_note_tag,
+            delete_note_folder,
             list_trash,
             trash_action,
             empty_trash,
@@ -2232,4 +2316,47 @@ pub fn run() {
                 _ => {}
             }
         });
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// 点过「开始做」的完成时记下用了几秒，正在做清掉；没点过的不记（需求-1.x 第 45.2 节）
+    #[test]
+    fn complete_records_time_used() {
+        let started = (Local::now().naive_local() - Duration::minutes(25)).format(FMT_SEC).to_string();
+        let mut r = Reminder { title: "报表".into(), due_at: "2026-11-26 15:45".into(), started_at: Some(started.clone()), ..Default::default() };
+        complete(&mut r);
+        assert!(r.done && r.started_at.is_none());
+        assert!((1499..=1501).contains(&r.used_sec.unwrap()), "{:?}", r.used_sec);
+        // 周期提醒排到下一次，同样记下这次用了多久
+        let mut w = Reminder { title: "周报".into(), due_at: "2026-11-27 15:00".into(), started_at: Some(started), ..Default::default() };
+        w.repeat = serde_json::from_str(r#"{"kind":"weekly","days":[5]}"#).unwrap();
+        complete(&mut w);
+        assert!(!w.done && w.started_at.is_none() && w.used_sec.is_some() && w.last_done_at.is_some());
+        let mut plain = Reminder { title: "喝水".into(), due_at: "2026-11-26 15:45".into(), used_sec: Some(60), ..Default::default() };
+        complete(&mut plain);
+        assert_eq!(plain.used_sec, None);
+    }
+
+    /// 正在做的点「稍后」算「还在做」；别的照旧（需求-1.x 第 45.2 节）
+    #[test]
+    fn snooze_while_running_is_still() {
+        let run = Reminder { started_at: Some("2026-11-26 15:46:10".into()), ..Default::default() };
+        assert_eq!(effective_action(&run, "snooze"), "still");
+        assert_eq!(effective_action(&run, "tomorrow"), "tomorrow");
+        assert_eq!(effective_action(&run, "done"), "done");
+        assert_eq!(effective_action(&Reminder::default(), "snooze"), "snooze");
+        assert_eq!(effective_action(&Reminder { done: true, ..run }, "snooze"), "snooze");
+    }
+
+    /// 顺手加笔记分类：只有最外层同名的才算已经有了
+    #[test]
+    fn new_cat_matches_top_level_only() {
+        let f = |name: &str, parent: Option<&str>| settings::TagDef { id: "x".into(), name: name.into(), color: "blue".into(), sound: String::new(), parent: parent.map(Into::into) };
+        assert!(same_new_cat(&f("月报", None), "月报"));
+        assert!(!same_new_cat(&f("月报", Some("work")), "月报"));
+        assert!(!same_new_cat(&f("周报", None), "月报"));
+    }
 }

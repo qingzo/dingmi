@@ -25,8 +25,11 @@
         <button class="nv" data-view="today" data-ic="sun" data-tt="today"><span class="lb" data-t="today"></span><span class="n hot num" id="n-today"></span></button>
         <button class="nv" data-view="reminders" data-ic="bell" data-tt="reminders"><span class="lb" data-t="reminders"></span><span class="n num" id="n-rem"></span></button>
         <button class="nv" data-view="notes" data-ic="notebook-pen" data-tt="notes"><span class="lb" data-t="notes"></span><span class="n num" id="n-notes"></span></button>
-        <div class="sb-sec"><span data-t="tagsSec"></span><button id="tags-edit" data-ic="pencil" data-tt="tagsEdit"></button></div>
+        <div class="sb-sec" id="tags-sec"><span data-t="tagsSec"></span><button id="tags-edit" data-ic="pencil" data-tt="tagsEdit"></button></div>
         <div class="sb-cats" id="side-tags"></div>
+        <!-- 在笔记本页换成笔记文件夹（需求-1.x 第 45.3 节） -->
+        <div class="sb-sec" id="nf-sec" hidden><span data-t="nfSec"></span><button id="nf-new" data-ic="folder-plus" data-tt="nfNew"></button></div>
+        <div class="sb-cats nf" id="side-folders" role="tree" hidden></div>
         <div class="sb-grow"></div>
         <div class="sb-focus" id="focus-row">
           <button class="fi" id="focus-ico" data-ic="moon" data-tt="focusToggle"></button>
@@ -65,6 +68,7 @@
           <div class="vh"><h3 data-t="notes"></h3><span class="sub" id="nb-count"></span>
             <div class="seg" id="nb-look" role="group"><button data-nblook="full" data-t="nbFull"></button><button data-nblook="titles" data-t="nbTitles"></button></div><span class="sp"></span>
             <button class="btn pri" id="new-note" data-ic="plus"><span data-t="newNote"></span></button></div>
+          <div class="banner info nbtip" id="nb-tip" hidden></div>
           <div class="nbk" id="nbk">
             <div class="nbk-l">
               <label class="field nbs" data-ic="search"><input id="nb-search" data-tp="nbSearch" data-tt="nbSearch"></label>

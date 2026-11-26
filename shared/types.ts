@@ -10,6 +10,8 @@ export interface TagDef {
   color: string;
   /** 这个分类的提示音（只有提醒分类用，需求-1.x 第 42.5 节）；没有是跟默认 */
   sound?: string;
+  /** 上一层（只有笔记分类用：笔记文件夹，需求-1.x 第 45.3 节）；没有是最外层 */
+  parent?: string;
 }
 /** 格式见 docs/方案/同步方案.md 4.2 */
 export type RepeatKind = "" | "none" | "daily" | "weekdays" | "weekly" | "monthly" | "interval" | "yearly" | "month_last" | "month_nth" | "lunar_yearly";
@@ -59,4 +61,8 @@ export interface Reminder {
   vague: boolean;
   /** 只说了哪天、没说几点：那天出现在「今天」里，不弹窗（due_at 照旧是那天 09:00）。旧版传来的没有 */
   allday?: boolean;
+  /** 点了「开始做」的时间（"YYYY-MM-DD HH:MM:SS"，需求-1.x 第 45.2 节）：有就是正在做 */
+  started_at?: string | null;
+  /** 上次完成时从开始做到完成用了几秒 */
+  used_sec?: number | null;
 }

@@ -47,6 +47,20 @@ body.glass .peek { top: 8px; right: 44px; width: 40px; height: 35px; clip-path: 
 .next b { display: block; font-size: calc(13.5px * var(--fs)); font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .next small { font-size: calc(12px * var(--fs)); font-weight: 500; color: var(--accent-ink); }
 
+/* 正在做（需求-1.x 第 45.2 节）：计时、完成、放下 */
+.run { display: flex; gap: 10px; padding: 10px 12px; border-radius: calc(var(--r-md) + 1px); background: var(--accent-soft); }
+.run > .lucide { color: var(--accent-ink); margin-top: 2px; }
+.run .m { flex: 1; min-width: 0; display: grid; gap: 1px; }
+.run .lab { display: flex; align-items: center; gap: 6px; font-size: calc(11.5px * var(--fs)); color: var(--accent-ink); }
+.run b { font-size: calc(13.5px * var(--fs)); font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.run .clock { font-size: calc(22px * var(--fs)); font-weight: 700; line-height: 1.25; color: var(--accent-ink); font-variant-numeric: tabular-nums; }
+.run .bt { display: flex; gap: 6px; margin-top: 4px; }
+.run + .next { background: var(--surf-2); }
+.pulse { display: inline-block; width: 7px; height: 7px; flex: none; border-radius: 50%; background: var(--accent); animation: runpulse 1.4s ease-in-out infinite; }
+@keyframes runpulse { 50% { opacity: .25; } }
+.it .tm .runtm { display: inline-flex; align-items: center; gap: 5px; color: var(--accent-ink); font-weight: 600; }
+.it .tm .used { color: var(--ok); }
+
 /* 白天全做完了 */
 .allok { display: flex; align-items: center; gap: 8px; padding: 10px; border-radius: calc(var(--r-md) + 1px); background: var(--ok-soft); font-size: calc(13px * var(--fs)); color: color-mix(in srgb, var(--ok) 70%, var(--ink)); }
 .allok .lucide { color: var(--ok); }

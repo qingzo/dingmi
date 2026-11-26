@@ -18,7 +18,7 @@ import { plain, renderMd, setAttachmentDir, setFileInfo, setFileSaveButton, setT
 setFileSaveButton(true);
 import { captureDrafts, tableClick, tableInput, tableKey, tableStates, type TableCtx } from "@shared/tables";
 import { icon, type IconName } from "@shared/icons";
-import { $, ago, copyText, debounce, esc, fireAt, isRecurring, noteCatDef, noteCatList, setNoteCats, tagColor, toast } from "@shared/util";
+import { $, ago, copyText, debounce, esc, fireAt, isRecurring, noteCatDef, noteCatDepth, noteCatList, noteCatPath, setNoteCats, tagColor, toast } from "@shared/util";
 import { T, whenShort } from "../text/notes";
 
 scaleWithFontSize();
@@ -152,7 +152,7 @@ function drawMeta() {
   const n = plain(ed?.value ?? note.body).replace(/\s/g, "").length;
   $("#meta").innerHTML = [
     // 没有笔记分类时也放：菜单里能直接加一个
-    `<button type="button" class="${cat ? "tag" : "tag nocat"}" id="m-cat" style="${cat ? tagColor(cat.color) : ""}" title="${T.catTip}" aria-haspopup="menu">${cat ? esc(cat.name) : `${icon("plus")}${T.noCat}`}</button>`,
+    `<button type="button" class="${cat ? "tag" : "tag nocat"}" id="m-cat" style="${cat ? tagColor(cat.color) : ""}" title="${T.catTip}" aria-haspopup="menu">${cat ? esc(noteCatPath(cat.id)) : `${icon("plus")}${T.noCat}`}</button>`,
     `<span>${esc(T.edited(ago(note.updated_at)))}</span>`,
     linked ? `<button type="button" class="lk" id="m-rem" title="${T.linkedTip}">${icon("bell")}${esc(T.linked(`${whenShort(fireAt(linked))} ${linked.title}`))}</button>` : "",
     `<span class="num">${T.words(n)}</span>`,
@@ -199,7 +199,7 @@ $("#meta").addEventListener("click", (e) => {
     };
     popMenu(
       cat,
-      `<button class="mi" data-cat="">${T.catNone}</button>${list.map((c) => `<button class="mi" data-cat="${esc(c.id)}"><span class="tag" style="${tagColor(c.color)}">${esc(c.name)}</span>${c.id === tag ? icon("check") : ""}</button>`).join("")}${newCatButton("mi")}`,
+      `<button class="mi" data-cat="">${T.catNone}</button>${list.map((c) => `<button class="mi" data-cat="${esc(c.id)}" style="--d:${noteCatDepth(c.id)}"><span class="tag" style="${tagColor(c.color)}">${esc(c.name)}</span>${c.id === tag ? icon("check") : ""}</button>`).join("")}${newCatButton("mi")}`,
       (mi) => {
         if (mi.dataset.cat !== undefined) pick(mi.dataset.cat || null);
       },

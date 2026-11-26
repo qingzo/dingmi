@@ -1,6 +1,6 @@
 [package]
 name = "dingmi"
-version = "1.0.12"
+version = "1.0.13"
 description = "叮咪：免费开源的 Windows 效率工具（提醒、笔记、启动器）"
 edition = "2021"
 license = "AGPL-3.0-only"

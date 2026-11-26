@@ -12,7 +12,9 @@ import { icon, type IconName } from "@shared/icons";
 import { editPins, initPins, setPinsConfig } from "../lib/pins";
 import { guess, quickSaveItems } from "../lib/quick";
 import { T } from "../text/widget";
-import { $, addDays, ago, dayStr, esc, fireAt, friendlyDT, isLate, isRecurring, isUndated, noteCatDef, parseDT, setNoteCats, setTags, tagColor, timeOf, weekdayCn } from "@shared/util";
+import {
+  $, addDays, ago, clockText, dayStr, durText, esc, fireAt, friendlyDT, isLate, isRecurring, isRunning, isUndated, noteCatDef, parseDT, runMs, setNoteCats, setTags, tagColor, timeOf, weekdayCn,
+} from "@shared/util";
 
 const win = getCurrentWindow();
 /** 「今天」最多几行，「待看」最多几条 */
@@ -94,10 +96,28 @@ function renderHead(pending: number, doneN: number) {
   $("#w-sub").innerHTML = pending ? T.left(pending) : tm ? T.tomorrow(tm) : doneN ? T.allDone(m) : T.free(m);
 }
 
+/** 正在做的那条（需求-1.x 第 45.2 节）：放在最上面，计时每秒走；完成、放下 */
+function renderRun() {
+  const r = S.reminders.find((x) => isRunning(x));
+  const box = $("#run");
+  box.hidden = !r;
+  if (!r) return;
+  box.dataset.rid = String(r.id);
+  box.innerHTML = `${icon("timer", "s16")}<div class="m"><small class="lab"><span class="pulse"></span>${esc(T.running((r.started_at ?? "").slice(11, 16)))}</small><b>${esc(r.title)}</b>
+    <span class="clock num" id="run-clock">${clockText(runMs(r))}</span>
+    <span class="bt"><button class="btn sm pri" data-runok="${r.id}">${icon("check")}${T.runDone}</button><button class="btn sm ghost" data-rundrop="${r.id}" title="${T.runDropTip}">${T.runDrop}</button></span></div>`;
+}
+setInterval(() => {
+  const r = S.reminders.find((x) => isRunning(x));
+  const c = document.querySelector("#run-clock");
+  if (r && c) c.textContent = clockText(runMs(r));
+}, 1000);
+
 function renderNext() {
   const now = new Date();
+  // 正在做的放在上面那块，不算下一条
   const next = S.reminders
-    .filter((r) => !r.done && !r.allday && !isUndated(r) && (parseDT(fireAt(r)) ?? now) > now)
+    .filter((r) => !r.done && !r.allday && !isUndated(r) && !isRunning(r) && (parseDT(fireAt(r)) ?? now) > now)
     .sort((a, b) => fireAt(a).localeCompare(fireAt(b)))[0];
   const box = $("#next");
   box.hidden = !next || hiddenPart("next");
@@ -115,11 +135,15 @@ function pastDay(f: string) {
 
 function remRow(r: Reminder, done: boolean) {
   const f = fireAt(r);
-  const late = !done && isLate(r);
+  const late = !done && !isRunning(r) && isLate(r);
   // 周期提醒做完后已经排到下一次了，没法在这里取消
   const fixed = done && isRecurring(r.repeat);
-  // 只有日期的：今天的写「全天」
-  const time = done ? timeOf(r.completed_at ?? r.last_done_at ?? f) : pastDay(f) || (r.allday ? T.allDay : timeOf(f));
+  // 只有日期的：今天的写「全天」；正在做的写做了几分钟；点过开始做的，做完写用了多久
+  const time = done
+    ? (r.used_sec ? `<span class="used">${T.used(durText(r.used_sec))}</span> ` : "") + timeOf(r.completed_at ?? r.last_done_at ?? f)
+    : isRunning(r)
+      ? `<span class="runtm"><span class="pulse"></span>${durText(runMs(r) / 1000)}</span>`
+      : pastDay(f) || (r.allday ? T.allDay : timeOf(f));
   return `<div class="it${done ? " done" : ""}${fixed ? " fixed" : ""}" data-rid="${r.id}">
     <button class="task" data-chk="${r.id}" aria-label="${done ? T.undo : T.done}">${icon("check")}</button>
     <span class="t">${esc(r.title)}</span><span class="tm num${late ? " late" : ""}">${time}</span></div>`;
@@ -186,6 +210,7 @@ function render() {
   for (const id of ["today", "toread", "pins"]) $(`#sec-${id}`).classList.toggle("closed", folded.includes(id));
   blockHead("pins", "pin", T.pins);
   $<HTMLElement>('[data-m="pins"]').hidden = hiddenPart("pins");
+  renderRun();
   renderNext();
   renderToday();
   renderToread();
@@ -321,6 +346,8 @@ $("#w").addEventListener("click", async (e) => {
   if (!$("#menu").hidden && !el.closest("#menu")) return closeMenu();
   const chk = el.closest<HTMLElement>("[data-chk]");
   if (chk) return check(Number(chk.dataset.chk), chk);
+  const run = el.closest<HTMLElement>("[data-runok], [data-rundrop]");
+  if (run) return void api.reminderAction(Number(run.dataset.runok ?? run.dataset.rundrop), run.dataset.runok ? "done" : "drop").catch(() => {});
   const fold = el.closest<HTMLElement>("[data-fold]");
   if (fold) return setFold(fold.dataset.fold!, !folded.includes(fold.dataset.fold!));
   const go = el.closest<HTMLElement>("[data-go]");

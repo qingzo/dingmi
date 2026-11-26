@@ -58,6 +58,12 @@ export interface Settings {
   tags: TagDef[];
   /** 笔记的分类，几台电脑共用 */
   note_cats: TagDef[];
+  /** 提醒加图片时新建的笔记放进哪个笔记分类，空着是不分类（需求-1.x 第 45 节），几台电脑共用 */
+  pic_cat: string;
+  /** 「全部」里也显示 pic_cat 里的笔记，默认不显示 */
+  pic_cat_all: boolean;
+  /** 升级时搬进「提醒附图」几篇，笔记本顶上说一声，点了「知道了」清零（只属于这台电脑） */
+  pic_cat_moved: number;
   /** 桌面组件（只属于这台电脑） */
   widget: boolean;
   /** 桌面组件里不显示的几块：next / today / toread / pins / input */
@@ -416,7 +422,8 @@ export interface FocusInfo {
   held: number;
 }
 
-export type ReminderAction = "done" | "snooze" | "tomorrow" | "snooze_to" | "undo";
+/** start 开始做 / still 还在做 / drop 放下（需求-1.x 第 45.2 节） */
+export type ReminderAction = "done" | "snooze" | "tomorrow" | "snooze_to" | "undo" | "start" | "still" | "drop";
 
 export const emptyRepeat = (): Repeat => ({ kind: "none", days: [], monthday: 0, every: 0, month: 0, nth: 0 });
 
@@ -481,6 +488,8 @@ export const newReminder = (p: Partial<Reminder> = {}): Reminder => ({
   todo: null,
   vague: false,
   allday: false,
+  started_at: null,
+  used_sec: null,
   ...p,
 });
 
@@ -606,6 +615,10 @@ export const api = {
   /** 分类删掉后，把用到它的提醒和笔记改成没有分类 */
   /** 删掉分类后清掉用着它的：notes 为 true 时是笔记分类 */
   clearTag: (tag: Tag, notes = false) => invoke<number>("clear_tag", { tag, notes }),
+  /** 笔记拖进文件夹：只换分类，不算改过（需求-1.x 第 45.3 节） */
+  setNoteTag: (id: number, tag: Tag | null) => invoke<void>("set_note_tag", { id, tag }),
+  /** 删掉笔记文件夹：里面的笔记和子文件夹放回上一层，回挪了几篇 */
+  deleteNoteFolder: (id: Tag) => invoke<number>("delete_note_folder", { id }),
   listTrash: () => invoke<Trash>("list_trash"),
   trashAction: (kind: TrashKind, id: number, action: "restore" | "purge") => invoke<void>("trash_action", { kind, id, action }),
   emptyTrash: () => invoke<number>("empty_trash"),

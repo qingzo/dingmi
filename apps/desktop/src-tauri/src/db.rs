@@ -94,6 +94,10 @@ pub struct Reminder {
     pub vague: bool,
     /// 只说了哪天、没说几点：那天出现在「今天」里，不弹窗。时间照旧存那天 09:00（旧版本照旧 9 点弹）
     pub allday: bool,
+    /// 点了「开始做」的时间（"YYYY-MM-DD HH:MM:SS"，需求-1.x 第 45.2 节）：有就是正在做；完成、放下时清掉
+    pub started_at: Option<String>,
+    /// 上次完成时从「开始做」到完成用了几秒（完成的那一行写「用了 25 分钟」）；没点过开始做是 None
+    pub used_sec: Option<i64>,
 }
 
 impl Reminder {
@@ -245,6 +249,9 @@ pub fn add_new_columns(conn: &Connection) -> rusqlite::Result<()> {
     add_column(conn, "attachments", "only_on", "TEXT")?;
     // 只说了哪天、没说几点的提醒，不弹窗（需求-1.x 第 40 节）
     add_column(conn, "reminders", "allday", "INTEGER NOT NULL DEFAULT 0")?;
+    // 开始做、用了多久（需求-1.x 第 45.2 节）
+    add_column(conn, "reminders", "started_at", "TEXT")?;
+    add_column(conn, "reminders", "used_sec", "INTEGER")?;
     Ok(())
 }
 
@@ -298,7 +305,7 @@ pub fn device_id(c: &Connection) -> rusqlite::Result<String> {
     Ok(d)
 }
 
-const R_COLS: &str = "id,title,detail,tag,urgent,due_at,repeat,snoozed_until,done,state,snooze_count,last_done_at,completed_at,created_at,uid,only_on,updated_at,deleted_at,note_uid,todo,vague,allday";
+const R_COLS: &str = "id,title,detail,tag,urgent,due_at,repeat,snoozed_until,done,state,snooze_count,last_done_at,completed_at,created_at,uid,only_on,updated_at,deleted_at,note_uid,todo,vague,allday,started_at,used_sec";
 
 fn row_reminder(r: &Row) -> rusqlite::Result<Reminder> {
     let repeat: String = r.get(6)?;
@@ -326,6 +333,8 @@ fn row_reminder(r: &Row) -> rusqlite::Result<Reminder> {
         todo: r.get(19)?,
         vague: r.get::<_, i64>(20)? != 0,
         allday: r.get::<_, i64>(21)? != 0,
+        started_at: r.get(22)?,
+        used_sec: r.get(23)?,
     })
 }
 
@@ -406,7 +415,8 @@ pub fn upsert_reminder(c: &Connection, r: &Reminder) -> rusqlite::Result<i64> {
         c.execute(
             "UPDATE reminders SET title=?2, detail=?3, tag=?4, urgent=?5, due_at=?6, repeat=?7,
                 snoozed_until=?8, done=?9, state=?10, snooze_count=?11, last_done_at=?12, completed_at=?13,
-                only_on=?14, updated_at=?15, ver=?16, note_uid=?17, todo=?18, vague=?19, allday=?20, dirty=1
+                only_on=?14, updated_at=?15, ver=?16, note_uid=?17, todo=?18, vague=?19, allday=?20,
+                started_at=?21, used_sec=?22, dirty=1
              WHERE id=?1",
             params![
                 r.id,
@@ -428,7 +438,9 @@ pub fn upsert_reminder(c: &Connection, r: &Reminder) -> rusqlite::Result<i64> {
                 r.note_uid,
                 r.todo,
                 r.vague as i64,
-                r.allday as i64
+                r.allday as i64,
+                r.started_at,
+                r.used_sec
             ],
         )?;
         Ok(r.id)
@@ -436,8 +448,8 @@ pub fn upsert_reminder(c: &Connection, r: &Reminder) -> rusqlite::Result<i64> {
         let uid = if r.uid.is_empty() { new_uid() } else { r.uid.clone() };
         c.execute(
             "INSERT INTO reminders(title,detail,tag,urgent,due_at,repeat,snoozed_until,done,state,snooze_count,last_done_at,completed_at,
-                only_on,created_at,updated_at,uid,ver,note_uid,todo,vague,allday,dirty)
-             VALUES(?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?14,?15,?16,?17,?18,?19,?20,1)",
+                only_on,created_at,updated_at,uid,ver,note_uid,todo,vague,allday,started_at,used_sec,dirty)
+             VALUES(?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?14,?15,?16,?17,?18,?19,?20,?21,?22,1)",
             params![
                 r.title,
                 r.detail,
@@ -458,7 +470,9 @@ pub fn upsert_reminder(c: &Connection, r: &Reminder) -> rusqlite::Result<i64> {
                 r.note_uid,
                 r.todo,
                 r.vague as i64,
-                r.allday as i64
+                r.allday as i64,
+                r.started_at,
+                r.used_sec
             ],
         )?;
         Ok(c.last_insert_rowid())
@@ -517,6 +531,20 @@ pub fn clear_tag(c: &Connection, tag: &str, notes: bool) -> rusqlite::Result<usi
     c.execute(
         &format!("UPDATE {table} SET tag=NULL, ver=?2, dirty=1 WHERE tag=?1 AND purged=0"),
         params![tag, clock::next()],
+    )
+}
+
+/// 换一篇笔记的分类（升级时把提醒的图片笔记搬进「提醒附图」、把笔记拖进文件夹用）：和置顶一样不算改过内容，修改时间不变
+pub fn set_note_tag(c: &Connection, id: i64, tag: Option<&str>) -> rusqlite::Result<()> {
+    c.execute("UPDATE notes SET tag=?2, ver=?3, dirty=1 WHERE id=?1", params![id, tag, clock::next()])?;
+    Ok(())
+}
+
+/// 笔记文件夹删掉了：里面的笔记（包括回收站里的）放到上一层（None 是没分类），返回改了几条
+pub fn move_note_tag(c: &Connection, from: &str, to: Option<&str>) -> rusqlite::Result<usize> {
+    c.execute(
+        "UPDATE notes SET tag=?2, ver=?3, dirty=1 WHERE tag=?1 AND purged=0",
+        params![from, to, clock::next()],
     )
 }
 
@@ -1046,11 +1074,11 @@ pub fn shared_init(c: &Connection, uid: &str, value: &str, ver: &str) -> rusqlit
 
 // ---------- 托盘提示、每天收尾 ----------
 
-/// 这台电脑上接下来要提醒的一条：(时间, 标题)。只有日期的、待办不弹，不算
+/// 这台电脑上接下来要提醒的一条：(时间, 标题)。只有日期的、待办不弹，不算；正在做的（隔 4 小时问一声还在不在做）也不算
 pub fn next_reminder(c: &Connection, now: &str, device: &str) -> Option<(String, String)> {
     c.query_row(
         "SELECT COALESCE(snoozed_until, due_at) AS f, title FROM reminders
-         WHERE done=0 AND deleted_at IS NULL AND allday=0 AND f > ?1 AND f < '9999'
+         WHERE done=0 AND deleted_at IS NULL AND allday=0 AND started_at IS NULL AND f > ?1 AND f < '9999'
            AND (only_on='[]' OR EXISTS(SELECT 1 FROM json_each(only_on) WHERE value=?2))
          ORDER BY f LIMIT 1",
         params![now, device],

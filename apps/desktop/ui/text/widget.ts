@@ -2,6 +2,12 @@
 
 export const T = {
   more: "更多",
+  // 正在做（需求-1.x 第 45.2 节）
+  running: (start: string) => `正在做 · ${start} 开始`,
+  runDone: "完成",
+  runDrop: "放下",
+  runDropTip: "不做了：停掉计时，回到普通提醒",
+  used: (used: string) => `用了 ${used}`,
   menu: {
     open: "打开叮咪",
     move: "移动位置",

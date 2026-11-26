@@ -63,6 +63,12 @@ html, body { height: auto; background: transparent; overflow: hidden; }
 /* 「完成这次」时四个按钮也放得下一行 */
 .card .acts .btn { padding: 0 9px; }
 .card .acts .btn.ghost { padding: 0 6px; }
+/* 开始做（需求-1.x 第 45.2 节）：描一圈主色；正在做的到了 4 小时问一声；已经有一条在做时问那条怎么办 */
+.card .acts .btn.go { border-color: color-mix(in srgb, var(--accent) 55%, var(--line-2)); color: var(--accent-ink); }
+.card .acts .btn .dd { width: 13px; height: 13px; margin-left: -2px; }
+.title .ask { margin-left: 6px; color: var(--accent-ink); font-size: calc(13px * var(--fs)); font-weight: 500; }
+.swap { display: grid; gap: 8px; padding: 10px 12px; border-radius: var(--r-md); background: var(--warn-soft); font-size: calc(12.5px * var(--fs)); }
+.swap p { margin: 0; }
 /* 关联的笔记：点一下打开 */
 .link { display: flex; align-items: center; gap: 8px; padding: 7px 10px; border: 0; border-radius: var(--r-md); background: var(--surf-2); font-size: calc(12.5px * var(--fs)); text-align: left; width: 100%; }
 .link:hover { background: var(--hover); }

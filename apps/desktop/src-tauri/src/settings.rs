@@ -48,6 +48,14 @@ pub struct Settings {
     pub note_cats: Vec<TagDef>,
     /// 旧数据里笔记用的提醒分类已经搬进笔记分类了（见 upgrade_note_cats）
     pub note_cats_ready: bool,
+    /// 提醒加图片时新建的那篇笔记放进哪个笔记分类（需求-1.x 第 45 节）；空着是不分类，默认「提醒附图」
+    pub pic_cat: String,
+    /// 「全部」里也显示 pic_cat 里的笔记；默认不显示，免得提醒的图片把笔记本堆满
+    pub pic_cat_all: bool,
+    /// 已经加过「提醒附图」、把以前提醒的图片笔记搬进去了（只属于这台电脑，见 upgrade_pic_cat）
+    pub pic_cat_ready: bool,
+    /// 升级时搬了几篇，笔记本顶上说一声，点了「知道了」清零（只属于这台电脑）
+    pub pic_cat_moved: u32,
     /// 自动检查更新（只属于这台电脑）：关了就只在「设置 → 关于」里点按钮时检查
     pub auto_update: bool,
     /// 桌面组件（只属于这台电脑）
@@ -117,10 +125,42 @@ pub struct TagDef {
     /// 这个分类的提示音（只有提醒分类用，需求-1.x 第 42.5 节）；空着跟默认。旧版本没有这一项
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub sound: String,
+    /// 上一层（只有笔记分类用：笔记文件夹，需求-1.x 第 45.3 节）；None 是最外层。旧版本没有这一项，平着显示
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub parent: Option<String>,
+}
+
+/// 笔记文件夹最多几个、几层（需求-1.x 第 45.3 节）；提醒分类还是 12 个
+pub const MAX_NOTE_CATS: usize = 60;
+pub const MAX_NOTE_DEPTH: usize = 3;
+
+/// 笔记文件夹从最外层到它自己的名字（需求-1.x 第 45.3 节）；上一层找不到的当最外层，绕成圈的最多走 MAX_NOTE_DEPTH 层
+pub fn note_cat_path<'a>(list: &'a [TagDef], id: &str) -> Vec<&'a str> {
+    let mut out = Vec::new();
+    let mut cur = list.iter().find(|t| t.id == id);
+    while let Some(t) = cur {
+        out.insert(0, t.name.as_str());
+        if out.len() >= MAX_NOTE_DEPTH {
+            break;
+        }
+        cur = t.parent.as_deref().and_then(|p| list.iter().find(|x| x.id == p));
+    }
+    out
+}
+
+/// 笔记文件夹删掉一个：里面的子文件夹放回上一层，回上一层的 id（None 是最外层）。没有这个文件夹回 Err(())
+pub fn remove_note_cat(s: &mut Settings, id: &str) -> Result<Option<String>, ()> {
+    let i = s.note_cats.iter().position(|t| t.id == id).ok_or(())?;
+    let up = s.note_cats.remove(i).parent;
+    for t in s.note_cats.iter_mut().filter(|t| t.parent.as_deref() == Some(id)) {
+        t.parent = up.clone();
+    }
+    s.fix_pic_cat();
+    Ok(up)
 }
 
 fn defs(list: &[(&str, &str, &str)]) -> Vec<TagDef> {
-    list.iter().map(|&(id, name, color)| TagDef { id: id.into(), name: name.into(), color: color.into(), sound: String::new() }).collect()
+    list.iter().map(|&(id, name, color)| TagDef { id: id.into(), name: name.into(), color: color.into(), sound: String::new(), parent: None }).collect()
 }
 
 pub fn default_tags() -> Vec<TagDef> {
@@ -128,7 +168,14 @@ pub fn default_tags() -> Vec<TagDef> {
 }
 
 pub fn default_note_cats() -> Vec<TagDef> {
-    defs(&[("toread", "待看", "orange"), ("idea", "灵感", "purple"), ("ref", "资料", "teal")])
+    defs(&[("toread", "待看", "orange"), ("idea", "灵感", "purple"), ("ref", "资料", "teal"), (PIC_CAT, "提醒附图", "gray")])
+}
+
+/// 放提醒图片的笔记分类（1.0.13 加的，需求-1.x 第 45 节）
+pub const PIC_CAT: &str = "rpic";
+
+fn pic_cat_def() -> TagDef {
+    default_note_cats().into_iter().find(|t| t.id == PIC_CAT).unwrap()
 }
 
 impl Default for Settings {
@@ -160,6 +207,10 @@ impl Default for Settings {
             tags: default_tags(),
             note_cats: default_note_cats(),
             note_cats_ready: false,
+            pic_cat: PIC_CAT.into(),
+            pic_cat_all: false,
+            pic_cat_ready: false,
+            pic_cat_moved: 0,
             auto_update: true,
             widget: false,
             widget_hide: Vec::new(),
@@ -215,6 +266,11 @@ pub struct Shared {
     pub sound_volume: Option<u32>,
     #[serde(default)]
     pub sound_loop: Option<bool>,
+    /// 提醒的图片放哪个分类、「全部」里显不显示（1.0.13 加的），旧版本传来的没有，同上
+    #[serde(default)]
+    pub pic_cat: Option<String>,
+    #[serde(default)]
+    pub pic_cat_all: Option<bool>,
 }
 
 pub const SHARED_UID: &str = "settings";
@@ -242,6 +298,8 @@ impl Settings {
             sound_urgent: Some(self.sound_urgent.clone()),
             sound_volume: Some(self.sound_volume),
             sound_loop: Some(self.sound_loop),
+            pic_cat: Some(self.pic_cat.clone()),
+            pic_cat_all: Some(self.pic_cat_all),
         }
     }
 
@@ -282,6 +340,25 @@ impl Settings {
         }
         if let Some(l) = s.sound_loop {
             self.sound_loop = l;
+        }
+        if let Some(p) = &s.pic_cat {
+            self.pic_cat = p.clone();
+        }
+        if let Some(a) = s.pic_cat_all {
+            self.pic_cat_all = a;
+        }
+        // 传来的笔记分类里没有「提醒附图」，可图片还放在那（旧版本传来的、那台电脑还没升级时存的）：放回来，
+        // 不然这些笔记看着像没分类。真删掉了的，删的时候已经改成不分类了（fix_pic_cat）
+        if self.pic_cat == PIC_CAT && !self.note_cats.iter().any(|t| t.id == PIC_CAT) {
+            self.note_cats.push(pic_cat_def());
+        }
+        self.fix_pic_cat();
+    }
+
+    /// 放提醒图片的分类被删掉了：以后不分类
+    pub fn fix_pic_cat(&mut self) {
+        if !self.pic_cat.is_empty() && !self.note_cats.iter().any(|t| t.id == self.pic_cat) {
+            self.pic_cat.clear();
         }
     }
 }
@@ -345,6 +422,60 @@ pub fn upgrade_note_cats(c: &Connection, s: &mut Settings) -> rusqlite::Result<(
     }
 }
 
+/// 1.0.13 加了「提醒附图」（需求-1.x 第 45 节）：笔记分类里补上它，以前提醒加图片时建的笔记（关联了提醒、没有分类、
+/// 正文只有图片）搬进去，正文有字的不动。只做一次，回搬了几篇。
+/// 几台电脑各自做，结果一样；分类只存本机，免得盖掉别的电脑上刚删掉它的设置（下次改共用设置时一起传出去）
+pub fn upgrade_pic_cat(c: &Connection, s: &mut Settings) -> rusqlite::Result<u32> {
+    if s.pic_cat_ready {
+        return Ok(0);
+    }
+    if s.pic_cat == PIC_CAT && !s.note_cats.iter().any(|t| t.id == PIC_CAT) {
+        s.note_cats.push(pic_cat_def());
+    }
+    s.fix_pic_cat();
+    let mut moved = 0;
+    if !s.pic_cat.is_empty() {
+        let ids: Vec<(i64, String)> = {
+            let mut st = c.prepare("SELECT id, body FROM notes WHERE tag IS NULL AND reminder_id IS NOT NULL AND deleted_at IS NULL AND purged=0")?;
+            let rows = st.query_map([], |r| Ok((r.get(0)?, r.get(1)?)))?;
+            rows.collect::<rusqlite::Result<_>>()?
+        };
+        for (id, body) in ids {
+            if only_pics(&body) {
+                db::set_note_tag(c, id, Some(&s.pic_cat))?;
+                moved += 1;
+            }
+        }
+    }
+    s.pic_cat_ready = true;
+    s.pic_cat_moved = moved;
+    save_local(c, s)?;
+    Ok(moved)
+}
+
+/// 正文只有图片（`![](att:文件名)` 一张接一张，中间只有空白）
+fn only_pics(body: &str) -> bool {
+    let mut rest = body.trim_start();
+    if rest.is_empty() {
+        return false;
+    }
+    while !rest.is_empty() {
+        let Some(r) = rest.strip_prefix("![") else { return false };
+        let Some(close) = r.find("](att:") else { return false };
+        if r[..close].contains(']') {
+            return false;
+        }
+        let r = &r[close + 6..];
+        let Some(end) = r.find(')') else { return false };
+        let name = &r[..end];
+        if name.is_empty() || !name.chars().all(|c| c.is_ascii_alphanumeric() || "._-".contains(c)) {
+            return false;
+        }
+        rest = r[end + 1..].trim_start();
+    }
+    true
+}
+
 /// 别的电脑传来了新的共用设置：合进本机设置并存好
 pub fn apply_shared(c: &Connection, value: &str) -> rusqlite::Result<()> {
     let Ok(shared) = serde_json::from_str::<Shared>(value) else {
@@ -382,10 +513,12 @@ mod tests {
         c.merge_shared(&old);
         assert_eq!(c.tags.len(), 1);
         // 笔记分类也跟着走；旧版本传来的没有笔记分类，保留自己的
+        // （放图片的分类也删了，存的时候 fix_pic_cat 会改成不分类）
         a.note_cats.truncate(1);
+        a.fix_pic_cat();
         c.merge_shared(&a.shared());
         assert_eq!(c.note_cats.len(), 1);
-        let old: Shared = serde_json::from_str(&serde_json::to_string(&Settings::default().shared()).unwrap().replace(r#","note_cats":"#, r#","y":"#)).unwrap();
+        let old: Shared = serde_json::from_str(&serde_json::to_string(&Settings::default().shared()).unwrap().replace(r#","note_cats":"#, r#","y":"#).replace(r#""pic_cat":"#, r#""z":"#)).unwrap();
         c.merge_shared(&old);
         assert_eq!(c.note_cats.len(), 1);
         // 网页关键字、随手算也跟着走；旧版本传来的没有，保留自己的
@@ -424,8 +557,8 @@ mod tests {
         let mut s: Settings = serde_json::from_str(r#"{"hk_flash":"Alt+Q"}"#).unwrap();
         upgrade_note_cats(&c, &mut s).unwrap();
         let ids: Vec<&str> = s.note_cats.iter().map(|t| t.id.as_str()).collect();
-        assert_eq!(ids, ["toread", "idea", "ref", "like", "work"]);
-        assert_eq!(s.note_cats[3].name, "喜好");
+        assert_eq!(ids, ["toread", "idea", "ref", "rpic", "like", "work"]);
+        assert_eq!(s.note_cats[4].name, "喜好");
         assert!(load(&c).unwrap().note_cats_ready);
         // 有东西搬过来才算改了共用设置，要同步给别的电脑
         assert!(db::shared_get(&c, SHARED_UID).is_some());
@@ -440,5 +573,101 @@ mod tests {
         let mut fresh = Settings::default();
         upgrade_note_cats(&c2, &mut fresh).unwrap();
         assert!(fresh.note_cats_ready && db::shared_get(&c2, SHARED_UID).is_none());
+    }
+
+    #[test]
+    fn upgrade_moves_reminder_pics() {
+        let dir = std::env::temp_dir().join(format!("dingmi-piccat-{}", uuid::Uuid::new_v4().simple()));
+        let c = db::open(&dir).unwrap();
+        let rid = db::upsert_reminder(&c, &db::Reminder { title: "报表修改".into(), due_at: "2026-11-26 15:45".into(), ..Default::default() }).unwrap();
+        let add = |body: &str, tag: Option<&str>, rem: bool| {
+            let n = db::Note { title: "x".into(), body: body.into(), tag: tag.map(Into::into), reminder_id: rem.then_some(rid), ..Default::default() };
+            db::upsert_note(&c, &n).unwrap()
+        };
+        let pics = add("![](att:a1.png)\n![](att:b-2.jpg)\n", None, true);
+        let text = add("交周报\n\n![](att:c.png)", None, true);
+        let tagged = add("![](att:d.png)", Some("ref"), true);
+        let loose = add("![](att:e.png)", None, false);
+        let empty = add("", None, true);
+        let tag = |id: i64| db::list_notes(&c).unwrap().into_iter().find(|n| n.id == id).unwrap().tag;
+        let before = db::list_notes(&c).unwrap().into_iter().find(|n| n.id == pics).unwrap().updated_at;
+
+        // 1.0.12 的设置：笔记分类里没有「提醒附图」，补在后面；只搬关联了提醒、没分类、正文只有图片的
+        let mut s: Settings = serde_json::from_str(r#"{"note_cats":[{"id":"toread","name":"待看","color":"orange"}],"note_cats_ready":true}"#).unwrap();
+        assert_eq!(upgrade_pic_cat(&c, &mut s).unwrap(), 1);
+        assert_eq!(s.note_cats.iter().map(|t| t.id.as_str()).collect::<Vec<_>>(), ["toread", "rpic"]);
+        assert_eq!(tag(pics).as_deref(), Some("rpic"));
+        assert_eq!([tag(text), tag(tagged), tag(loose), tag(empty)], [None, Some("ref".into()), None, None]);
+        // 搬了不算改过内容；本机记着搬了几篇；分类只存本机，不当成共用设置的改动
+        assert_eq!(db::list_notes(&c).unwrap().into_iter().find(|n| n.id == pics).unwrap().updated_at, before);
+        let saved = load(&c).unwrap();
+        assert!(saved.pic_cat_ready && saved.pic_cat_moved == 1 && !saved.pic_cat_all);
+        assert!(db::shared_get(&c, SHARED_UID).is_none());
+        // 只做一次：删掉「提醒附图」以后不会再加回来
+        s.note_cats.truncate(1);
+        s.fix_pic_cat();
+        assert_eq!(upgrade_pic_cat(&c, &mut s).unwrap(), 0);
+        assert_eq!((s.note_cats.len(), s.pic_cat.as_str()), (1, ""));
+
+        assert!(only_pics(" ![图](att:x.png)  ![](att:y_1.webp) "));
+        assert!(!only_pics("") && !only_pics("![](att:x.png) 说明") && !only_pics("![](https://a.com/x.png)") && !only_pics("[文件](att:x.pdf)"));
+    }
+
+    #[test]
+    fn pic_cat_follows_shared() {
+        let mut a = Settings { pic_cat: "ref".into(), pic_cat_all: true, ..Default::default() };
+        let mut b = Settings::default();
+        b.merge_shared(&a.shared());
+        assert_eq!((b.pic_cat.as_str(), b.pic_cat_all), ("ref", true));
+        // 删掉了放图片的分类：存的时候改成不分类，传过去也是
+        a.pic_cat = PIC_CAT.into();
+        a.note_cats.retain(|t| t.id != PIC_CAT);
+        a.fix_pic_cat();
+        b.merge_shared(&a.shared());
+        assert_eq!(b.pic_cat, "");
+        // 换成了别的分类又被删掉：同样不分类
+        a.pic_cat = "gone".into();
+        b.merge_shared(&a.shared());
+        assert_eq!(b.pic_cat, "");
+        // 那台电脑还没升级时存的：说放在「提醒附图」、分类里却没有，放回来
+        let mut stale = Settings::default();
+        stale.note_cats.retain(|t| t.id != PIC_CAT);
+        let mut d = Settings::default();
+        d.merge_shared(&stale.shared());
+        assert_eq!(d.pic_cat, PIC_CAT);
+        assert!(d.note_cats.iter().any(|t| t.id == PIC_CAT));
+        // 旧版本传来的：没有这两项，笔记分类里也没有「提醒附图」；保留自己的，「提醒附图」放回去
+        let mut c = Settings::default();
+        let mut old = Settings::default().shared();
+        old.pic_cat = None;
+        old.pic_cat_all = None;
+        old.note_cats.as_mut().unwrap().retain(|t| t.id != PIC_CAT);
+        c.merge_shared(&old);
+        assert_eq!(c.pic_cat, PIC_CAT);
+        assert!(c.note_cats.iter().any(|t| t.id == PIC_CAT));
+    }
+
+    #[test]
+    fn note_folders() {
+        let f = |id: &str, name: &str, parent: Option<&str>| TagDef { id: id.into(), name: name.into(), color: "blue".into(), sound: String::new(), parent: parent.map(Into::into) };
+        let mut s = Settings { note_cats: vec![f("work", "工作", None), f("cs", "长寿医院", Some("work")), f("rep", "月报", Some("cs")), f("ref", "资料", None)], ..Default::default() };
+        assert_eq!(note_cat_path(&s.note_cats, "rep"), ["工作", "长寿医院", "月报"]);
+        assert_eq!(note_cat_path(&s.note_cats, "ref"), ["资料"]);
+        assert!(note_cat_path(&s.note_cats, "gone").is_empty());
+        // 上一层找不到的当最外层；绕成圈的不会一直走下去
+        s.note_cats.push(f("x", "孤儿", Some("nope")));
+        assert_eq!(note_cat_path(&s.note_cats, "x"), ["孤儿"]);
+        let lp = vec![f("a", "甲", Some("b")), f("b", "乙", Some("a"))];
+        assert_eq!(note_cat_path(&lp, "a").len(), MAX_NOTE_DEPTH);
+        // 删掉中间一层：子文件夹放回上一层，回上一层的 id
+        assert_eq!(remove_note_cat(&mut s, "cs"), Ok(Some("work".into())));
+        assert_eq!(s.note_cats.iter().find(|t| t.id == "rep").unwrap().parent.as_deref(), Some("work"));
+        assert_eq!(remove_note_cat(&mut s, "work"), Ok(None));
+        assert_eq!(s.note_cats.iter().find(|t| t.id == "rep").unwrap().parent, None);
+        assert_eq!(remove_note_cat(&mut s, "work"), Err(()));
+        // 旧版本存的没有 parent；没有上一层的不写出去
+        let t: TagDef = serde_json::from_str(r#"{"id":"ref","name":"资料","color":"teal"}"#).unwrap();
+        assert_eq!(t.parent, None);
+        assert!(!serde_json::to_string(&t).unwrap().contains("parent"));
     }
 }

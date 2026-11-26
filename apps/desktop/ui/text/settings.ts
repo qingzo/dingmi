@@ -56,6 +56,8 @@ export const ROWS = {
   },
   notes: {
     note_cats: { name: "笔记分类", sub: "按内容给笔记分类，笔记本里点分类就能筛出来", also: ["分类", "标签", "文件夹", "待看", "灵感", "资料"] },
+    pic_cat: { name: "提醒加图片时新建的笔记放进", sub: "给提醒加图片、快捷框里粘图片记提醒时，图片放在一篇自动建的笔记里", also: ["提醒附图", "图片", "截图", "提醒的图片"] },
+    pic_cat_all: { name: "「全部」里也显示这些笔记", sub: "关着时只在点这个分类时列出来，搜索照样搜得到", also: ["提醒附图", "图片", "隐藏", "全部"] },
     obsidian: { name: "放进 Obsidian 这类软件", sub: "在 数据 → 导出全部 里导出 Markdown", also: ["obsidian", "markdown", "导出"] },
   },
   quick: {
@@ -160,7 +162,7 @@ export const T = {
   hint: {
     general: "开机、快捷键、外观。",
     remind: "到点时的卡片和提示音、每天的开场白和收尾、提醒分类。",
-    notes: "按内容给笔记分类，笔记本里点分类就能筛出来。",
+    notes: "按内容给笔记分类，分类可以一层套一层（最多 3 层）。在笔记本左边点「⋯」新建子文件夹，把笔记拖进文件夹。",
     quick: (hk: string) => `按 ${hk} 打开。这里管它能找到什么、打开什么。`,
     widget: "贴在桌面上的一张卡片，回到桌面、按 Win + D 就能看到今天的事。开不开、放在哪，每台电脑各自设置。",
     ai: "填了 Key，我能更懂你写的话，还能写开场白、整理笔记。只会发送你当次写的那句话或今天的安排。不填也能用，会改用本地规则认时间。",
@@ -218,17 +220,21 @@ export const T = {
 
   // ---------- 分类 ----------
   catCount: (n: number) => (n ? `${n} 条` : "还没用过"),
+  picHere: "提醒的图片放这里",
+  picH: "提醒的图片",
+  picNone: "不分类（和以前一样）",
   catColor: "换颜色",
   catRename: "改名",
   catDel: "删掉",
   catDelSure: "确定删掉",
+  ncatDelAsk: (name: string, up: string) => `删掉「${name}」后，里面的笔记和子文件夹放回「${up}」。再点一次就删。`,
   catDelAsk: (name: string, n: number, what: string) => (n ? `「${name}」用在 ${n} 条${what}上，删掉后它们变成没有分类。再点一次就删。` : `再点一次就删掉「${name}」。`),
   catAdd: "加一个",
   catAddOk: "加上",
   catNew: (what: string) => `新的${what}分类`,
   catName: "分类的名字",
   catTaken: (name: string) => `已经有「${name}」了`,
-  catFull: "最多 12 个",
+  catFull: (n: number) => `最多 ${n} 个`,
   catAdded: (name: string) => `加好了「${name}」`,
   catRenamed: "改好名字了",
   catDeleted: (name: string) => `删掉了「${name}」`,

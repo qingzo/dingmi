@@ -11,7 +11,7 @@ import { CUSTOM, ring, SOUNDS } from "../lib/sound";
 import { findRows, markName, rowsOf, type Found } from "../lib/setfind";
 import { icon, type IconName } from "@shared/icons";
 import { appIcon, cat } from "@shared/mascot";
-import { $, $$, esc, hotkeyFromEvent, hotkeyText, noteCatList, setNoteCats, setTags, tagColor, tagList, TAG_COLORS, toast } from "@shared/util";
+import { $, $$, esc, hotkeyFromEvent, hotkeyText, MAX_NOTE_CATS, noteCatDef, noteCatDepth, noteCatList, noteCatPath, setNoteCats, setTags, tagColor, tagList, TAG_COLORS, toast } from "@shared/util";
 import { armed, hideModal, hooks, S } from "./main-state";
 import { busy, dialog, h5, head, hkMsg, lockDialog, note, row, rows, saveSettings, select, tog } from "./settings-ui";
 import { backupTime, renderSync, settingsSyncChanged, syncBad, syncClick, syncInput, syncPageHtml } from "./settings-sync";
@@ -191,8 +191,7 @@ async function renderSettings() {
 const PAGE: Record<PageId, (s: Settings) => string | Promise<string>> = {
   general: generalHtml,
   remind: remindHtml,
-  notes: () => `${head(pageName("notes"), T.hint.notes as string)}${h5(ROWS.notes.note_cats.name, { id: "note_cats" })}<div class="srows" id="ncat-rows"></div><p class="fhelp err" id="ncat-msg"></p>
-    <div data-row="obsidian">${note("soft", "info", "", esc(T.obsidian))}</div>`,
+  notes: notesHtml,
   quick: quickHtml,
   widget: widgetHtml,
   ai: aiHtml,
@@ -200,6 +199,16 @@ const PAGE: Record<PageId, (s: Settings) => string | Promise<string>> = {
   data: dataHtml,
   about: aboutHtml,
 };
+
+// ---------- 笔记：分类、提醒的图片放哪（需求-1.x 第 45 节） ----------
+
+function notesHtml(s: Settings) {
+  const N = ROWS.notes;
+  const opts: [string, string][] = [...noteCatList().map((t) => [t.id, noteCatPath(t.id)] as [string, string]), ["", T.picNone]];
+  return `${head(pageName("notes"), T.hint.notes as string)}${h5(N.note_cats.name, { id: "note_cats" })}<div class="srows" id="ncat-rows"></div><p class="fhelp err" id="ncat-msg"></p>
+    ${h5(T.picH)}${rows(row("pic_cat", N.pic_cat, select("pic_cat", N.pic_cat.name, opts)), s.pic_cat ? row("pic_cat_all", N.pic_cat_all, tog("pic_cat_all", N.pic_cat_all.name)) : "")}
+    <div data-row="obsidian">${note("soft", "info", "", esc(T.obsidian))}</div>`;
+}
 
 // ---------- 通用：开机、快捷键、外观 ----------
 
@@ -438,7 +447,8 @@ async function soundClick(el: HTMLElement): Promise<boolean> {
 // ---------- 提醒分类、笔记分类：颜色、名字和条数、换颜色 / 改名 / 删掉；最下面「加一个」 ----------
 // 两种管法一样，只是存在设置里不同的地方、用在不同的东西上
 
-const MAX_CATS = 12;
+/** 提醒分类最多 12 个；笔记分类是文件夹，多一些（需求-1.x 第 45.3 节） */
+const maxCats = (k: CatKindKey) => (k === "ncat" ? MAX_NOTE_CATS : 12);
 type CatKindKey = "tag" | "ncat";
 
 interface CatKind {
@@ -476,15 +486,15 @@ function renderCatRows(k: CatKindKey) {
         const name =
           catEdit === key
             ? `<input class="field" data-tname value="${esc(t.name)}" maxlength="8" aria-label="${T.catName}">`
-            : `<span class="nm">${esc(t.name)} <small>${T.catCount(kind.used(t.id))}</small></span>`;
-        return `<div class="catrow" data-tid="${esc(t.id)}" data-kind="${k}" style="${tagColor(t.color)}">
+            : `<span class="nm">${esc(t.name)} <small>${T.catCount(kind.used(t.id))}</small>${k === "ncat" && t.id === S.settings?.pic_cat ? `<small class="picmark">${T.picHere}</small>` : ""}</span>`;
+        return `<div class="catrow" data-tid="${esc(t.id)}" data-kind="${k}" style="${tagColor(t.color)};--d:${k === "ncat" ? noteCatDepth(t.id) : 0}">
           <span class="sw"></span>${name}
           ${k === "tag" && S.settings?.sound ? catSound(t) : ""}${ib(`data-tcolor aria-expanded="${picking}"`, "palette", T.catColor)}${ib("data-tren", "pencil", T.catRename)}${ib("data-tdel", "trash-2", T.catDel, " danger")}
         </div>${picking ? `<div class="swatches" data-kind="${k}">${TAG_COLORS.map((c) => `<button data-tpick="${c}" style="${tagColor(c)}" aria-pressed="${c === t.color}" aria-label="${c}"></button>`).join("")}</div>` : ""}`;
       })
       .join("") +
-    (list.length >= MAX_CATS
-      ? `<div class="catrow"><small>${T.catFull}</small></div>`
+    (list.length >= maxCats(k)
+      ? `<div class="catrow"><small>${T.catFull(maxCats(k))}</small></div>`
       : catAdding === k
         ? `<div class="catrow" data-kind="${k}"><span class="sw add">${icon("plus")}</span><input class="field" id="${k}-new" data-tnew maxlength="8" placeholder="${T.catNew(kind.what)}" aria-label="${T.catNew(kind.what)}"><button class="btn sm pri" data-tadd>${T.catAddOk}</button></div>`
         : `<div class="catrow" data-kind="${k}"><button class="btn sm ghost add" data-tnewopen>${icon("plus")}${T.catAdd}</button></div>`);
@@ -512,7 +522,11 @@ async function saveCats(k: CatKindKey, list: TagDef[]) {
   renderCats();
 }
 
-const catNameTaken = (k: CatKindKey, name: string, except = "") => CAT_KINDS[k].list().some((t) => t.name === name && t.id !== except);
+/** 同名的已经有了：笔记文件夹只看同一层 */
+const catNameTaken = (k: CatKindKey, name: string, except = "") => {
+  const up = k === "ncat" ? (noteCatDef(except)?.parent ?? null) : null;
+  return CAT_KINDS[k].list().some((t) => t.name === name && t.id !== except && (k !== "ncat" || (t.parent ?? null) === up));
+};
 
 async function addCat(k: CatKindKey) {
   const inp = $<HTMLInputElement>(`#${k}-new`);
@@ -584,12 +598,24 @@ async function catClick(el: HTMLElement): Promise<boolean> {
   if (!del) return true;
   const t = kind.list().find((x) => x.id === id)!;
   if (!armed(del, T.catDelSure)) {
-    catMsg(k, T.catDelAsk(t.name, kind.used(id), kind.what));
+    const up = k === "ncat" ? noteCatDef(t.parent) : undefined;
+    catMsg(k, up ? T.ncatDelAsk(t.name, up.name) : T.catDelAsk(t.name, kind.used(id), kind.what));
     return true;
   }
   catMsg(k, "");
+  if (k === "ncat") {
+    // 笔记文件夹：里面的笔记和子文件夹放回上一层（需求-1.x 第 45.3 节）
+    try {
+      await api.deleteNoteFolder(id);
+    } catch (e) {
+      catMsg(k, errText(e));
+      return true;
+    }
+    toast(T.catDeleted(t.name));
+    return true;
+  }
   await saveCats(k, kind.list().filter((x) => x.id !== id));
-  await api.clearTag(id, k === "ncat").catch((e) => catMsg(k, T.catClearFail(kind.what, errText(e))));
+  await api.clearTag(id, false).catch((e) => catMsg(k, T.catClearFail(kind.what, errText(e))));
   toast(T.catDeleted(t.name));
   return true;
 }
@@ -1423,6 +1449,8 @@ body.addEventListener("change", async (e) => {
   if (!k || !S.settings) return;
   (S.settings as unknown as Record<string, unknown>)[k] = "num" in el.dataset ? Number(el.value) : el.value.trim();
   if (await saveSettings()) toast(T.saved);
+  // 选了「不分类」就没有「『全部』里也显示」那一行；分类列表上的「提醒的图片放这里」跟着换
+  if (k === "pic_cat") await renderSettings();
   if (k === "sound_kind") trySound(S.settings.sound_kind);
   else if (k === "sound_urgent") trySound(S.settings.sound_urgent, !S.settings.sound_urgent);
   else if (k === "sound_volume") trySound(S.settings.sound_kind);

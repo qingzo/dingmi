@@ -85,7 +85,31 @@ button.tag { border: 0; cursor: pointer; }
   .sb-focus { width: 40px; justify-content: center; padding: 9px 0; background: none; }
   .sb-focus:hover { background: var(--hover); }
   .sb-focus.on { background: var(--accent-soft); }
+  /* 侧栏收成一排图标时放不下文件夹树：换回笔记本里列表上面那一排 */
+  .sb-cats.nf { display: none !important; }
 }
+
+/* 笔记文件夹（需求-1.x 第 45.3 节）：在笔记本页代替侧栏的提醒分类；一层缩进 14px */
+.nfr { gap: 6px; padding: 0 4px 0 calc(6px + var(--d, 0) * 14px); cursor: pointer; }
+.nfr .cv { width: 14px; flex: none; display: grid; place-items: center; color: var(--ink-3); }
+.nfr .cv .lucide { width: 13px; height: 13px; }
+.nfr.top .cv .lucide { width: 15px; height: 15px; color: var(--ink-2); }
+.nfr .n { padding-right: 6px; }
+.nfr .more { display: none; width: 22px; height: 22px; flex: none; padding: 0; border: 0; border-radius: var(--r-sm); background: none; color: var(--ink-3); place-items: center; }
+.nfr .more .lucide { width: 15px; height: 15px; }
+.nfr .more:hover { background: var(--surf); color: var(--ink); }
+.nfr:hover .more, .nfr:focus-within .more { display: grid; }
+.nfr:has(.more):hover .n, .nfr:has(.more):focus-within .n { display: none; }
+.nfr.drop { outline: 2px dashed var(--accent); outline-offset: -2px; background: var(--accent-soft); }
+.nfr .nfin { flex: 1; min-width: 0; height: 24px; padding: 0 6px; font-size: calc(12.5px * var(--fs)); }
+@media (min-width: 860px) { #nb-cats { display: none; } }
+/* 分类菜单按层缩进；文件夹菜单里的颜色 */
+#menu .mi { padding-left: calc(8px + var(--d, 0) * 14px); }
+#menu .mi:disabled { color: var(--ink-4); }
+#menu .mi .mut { margin-left: auto; color: var(--ink-3); font-size: calc(11px * var(--fs)); }
+.nfsw { display: flex; flex-wrap: wrap; gap: 8px; padding: 6px 10px; }
+.nfsw button { width: 16px; height: 16px; padding: 0; border: 0; border-radius: 50%; background: var(--c); }
+.nfsw button[aria-pressed="true"] { box-shadow: 0 0 0 2px var(--surf), 0 0 0 4px var(--c); }
 
 /* ---------- 内容面板 ---------- */
 .panel { position: relative; display: flex; flex-direction: column; min-width: 0; min-height: 0; overflow: hidden; background: var(--surf); border-top-left-radius: 12px; box-shadow: var(--sh-1); }
@@ -194,6 +218,16 @@ button.tag { border: 0; cursor: pointer; }
 .it .hacts { display: none; gap: 2px; flex: none; }
 .it:hover .hacts, .it:focus-within .hacts { display: flex; }
 .it:has(.hacts):hover .tm, .it:has(.hacts):focus-within .tm { display: none; }
+/* 正在做（需求-1.x 第 45.2 节）：浅橘底、跳动的点、几分钟；做完写用了多久 */
+.it.run { background: var(--accent-soft); }
+.it.run:hover, .it.run:focus-within { background: color-mix(in srgb, var(--accent-soft) 80%, var(--hover)); }
+.it .tm.runtm { display: inline-flex; align-items: center; gap: 6px; min-width: 0; color: var(--accent-ink); font-weight: 600; }
+.it .runok { flex: none; }
+.it .used { display: inline-flex; align-items: center; gap: 3px; flex: none; color: var(--ok); font-size: calc(12px * var(--fs)); }
+.it .used .lucide { width: 12px; height: 12px; }
+.pulse { width: 7px; height: 7px; flex: none; border-radius: 50%; background: var(--accent); animation: runpulse 1.4s ease-in-out infinite; }
+@keyframes runpulse { 50% { opacity: .25; } }
+@media (prefers-reduced-motion: reduce) { .pulse { animation: none; } }
 .vb.trash .it { cursor: default; }
 .vb.trash .it .tm { min-width: 0; }
 
@@ -247,6 +281,17 @@ button.tag { border: 0; cursor: pointer; }
 .nbk-items.titles .nbi { grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 10px; padding: 7px 10px; }
 .nbk-items.titles .nbi small { display: none; }
 .nbk-items.titles .nbi .mt { margin-top: 0; }
+/* 提醒的图片放一个分类（需求-1.x 第 45 节）：只有图片的笔记显示小图；「全部」里没显示几篇；升级后说一声 */
+.nbi .nbpics { display: flex; gap: 4px; margin-top: 3px; }
+.nbi .nbpics img { width: 52px; height: 36px; object-fit: cover; border-radius: var(--r-xs); border: 1px solid var(--line); background: var(--surf-2); }
+.nbk-items.titles .nbi .nbpics { display: none; }
+.nbc small { font-size: calc(11px * var(--fs)); opacity: .7; }
+.nbhid { display: flex; align-items: center; gap: 6px; }
+.nbhid .lucide { width: 13px; height: 13px; flex: none; }
+.nbhid .lnk { color: var(--accent-ink); }
+.nbtip { flex: none; align-items: center; margin: 0 24px 10px; padding: 6px 8px 6px 12px; }
+.nbtip > div { flex: 1; }
+.nbtip .lucide { width: 16px; height: 16px; margin-top: 0; }
 .vh #nb-look { margin-left: 4px; }
 .nbi mark, .palette mark { padding: 0; background: transparent; color: var(--accent-ink); font-weight: 700; }
 .nbk-l .empty { padding-top: 28px; }

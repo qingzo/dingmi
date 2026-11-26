@@ -2,6 +2,7 @@
 // 字段名和取值都要和电脑端一模一样，电脑端才认得手机改过的记录。
 import { resetSubs } from "@shared/md";
 import { isRecurring, nextAfter, type RepeatRule } from "@shared/recur";
+import { runMs } from "@shared/util";
 
 /** 格式见 docs/方案/同步方案.md 4.2；month、nth 是 0.2 加的，旧记录没有 */
 export type Repeat = RepeatRule;
@@ -31,6 +32,9 @@ export interface SReminder {
   vague?: boolean;
   /** 只说了哪天、没说几点：那天在「今天」里，电脑上不弹窗（1.0.9 加的，旧记录没有） */
   allday?: boolean;
+  /** 电脑上点了「开始做」的时间、上次用了几秒（1.0.13 加的，需求-1.x 第 45.2 节） */
+  started_at?: string | null;
+  used_sec?: number | null;
 }
 
 export interface SNote {
@@ -99,7 +103,11 @@ export const DEFAULT_NOTE_CATS: TagDef[] = [
   { id: "toread", name: "待看", color: "orange" },
   { id: "idea", name: "灵感", color: "purple" },
   { id: "ref", name: "资料", color: "teal" },
+  { id: "rpic", name: "提醒附图", color: "gray" },
 ];
+
+/** 放提醒图片的笔记分类（1.0.13 加的，需求-1.x 第 45 节）：「全部」里默认不显示 */
+export const PIC_CAT = "rpic";
 
 export const DEFAULT_TAGS: TagDef[] = [
   { id: "work", name: "工作", color: "blue" },
@@ -184,7 +192,9 @@ export function blankReminder(due_at: string): SReminder {
 
 /** 完成一条提醒：一次性的标记完成，周期的排到下一次 */
 export function complete(r: SReminder, now = new Date()): SReminder {
-  const out = { ...r, snoozed_until: null };
+  // 电脑上点过「开始做」的：记下用了多久，正在做清掉（和 lib.rs 的 complete 一样）
+  const used = r.started_at ? Math.round(runMs(r, now.getTime()) / 1000) : null;
+  const out = { ...r, snoozed_until: null, started_at: null, used_sec: used };
   if (isRecurring(r.repeat)) {
     out.last_done_at = fmtMin(now);
     // 子项都变回没勾，下一次重新做（需求-1.x 第 42.1 节）
@@ -199,7 +209,7 @@ export function complete(r: SReminder, now = new Date()): SReminder {
   return out;
 }
 
-export const undoComplete = (r: SReminder): SReminder => ({ ...r, done: false, completed_at: null });
+export const undoComplete = (r: SReminder): SReminder => ({ ...r, done: false, completed_at: null, used_sec: null });
 
 /** 标题空着时，用正文第一行的前 20 个字 */
 export function noteTitle(title: string, body: string): string {

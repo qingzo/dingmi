@@ -8,7 +8,7 @@ import { createNoteEditor } from "../lib/editor";
 import { attachmentSrc, setAttachmentDir, shrunkMuch } from "@shared/md";
 import { askTidy } from "../lib/tidyask";
 import { icon, type IconName } from "@shared/icons";
-import { $, esc, noteCatList, setNoteCats, tagColor } from "@shared/util";
+import { $, esc, noteCatList, noteCatPath, setNoteCats, tagColor } from "@shared/util";
 import { T } from "../text/notes";
 
 // 快速记笔记小窗口（U7，Ctrl + Alt + N）：宽 460，在快捷框的位置弹出。标题可以不填，正文是实时预览；
@@ -103,7 +103,7 @@ function clear() {
 
 function drawCats() {
   $("#tags").innerHTML = noteCatList()
-    .map((c) => `<button type="button" class="tag qcat" style="${tagColor(c.color)}" data-tag="${esc(c.id)}" aria-pressed="${c.id === tag}">${esc(c.name)}</button>`)
+    .map((c) => `<button type="button" class="tag qcat" style="${tagColor(c.color)}" data-tag="${esc(c.id)}" aria-pressed="${c.id === tag}">${esc(noteCatPath(c.id))}</button>`)
     .join("");
 }
 $("#tags").addEventListener("click", (e) => {

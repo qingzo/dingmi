@@ -17,13 +17,57 @@ export const tagHtml = (id: Tag | null | undefined) => tagSpan(tagDef(id));
 /** 编辑提醒时选分类的一排小圆片 */
 export const tagChips = (sel: Tag | null) => chips(tags, sel);
 
-// 笔记分类：笔记上存的 tag 是笔记分类的 id
+// 笔记分类：笔记上存的 tag 是笔记分类的 id。分类可以一层套一层，就是笔记文件夹（需求-1.x 第 45.3 节）
 let noteCats: TagDef[] = [];
-export const setNoteCats = (list: TagDef[] | undefined) => (noteCats = list ?? []);
+/** 笔记文件夹最多几层、几个（和 settings.rs 一样） */
+export const MAX_NOTE_DEPTH = 3;
+export const MAX_NOTE_CATS = 60;
+/** 按树排好：每个文件夹后面紧跟它下面的；上一层找不到的当最外层 */
+function treeOrder(list: TagDef[]): TagDef[] {
+  const ids = new Set(list.map((t) => t.id));
+  const out: TagDef[] = [];
+  const seen = new Set<string>();
+  const walk = (p: string | null) => {
+    for (const t of list) {
+      if (seen.has(t.id) || (p === null ? !!t.parent && ids.has(t.parent) : t.parent !== p)) continue;
+      seen.add(t.id);
+      out.push(t);
+      walk(t.id);
+    }
+  };
+  walk(null);
+  // 绕成圈的（不该有）放在最后
+  return [...out, ...list.filter((t) => !seen.has(t.id))];
+}
+export const setNoteCats = (list: TagDef[] | undefined) => (noteCats = treeOrder(list ?? []));
+/** 全部笔记分类，按树排好 */
 export const noteCatList = () => noteCats;
 export const noteCatDef = (id: Tag | null | undefined) => (id ? noteCats.find((t) => t.id === id) : undefined);
-export const noteCatHtml = (id: Tag | null | undefined) => tagSpan(noteCatDef(id));
-export const noteCatChips = (sel: Tag | null) => chips(noteCats, sel);
+/** 上一层；没有（最外层、上一层被删了）是 undefined */
+export const noteCatUp = (id: Tag | null | undefined) => noteCatDef(noteCatDef(id)?.parent);
+/** 第几层：最外层是 0 */
+export function noteCatDepth(id: Tag | null | undefined): number {
+  let d = 0;
+  for (let t = noteCatUp(id); t && d < MAX_NOTE_DEPTH; t = noteCatUp(t.id)) d++;
+  return d;
+}
+/** 下面一层的 */
+export const noteCatKids = (id: Tag | null) => noteCats.filter((t) => (id ? t.parent === id : !noteCatUp(t.id)));
+/** 它自己和下面所有层的 id（绕成圈的最多走 MAX_NOTE_DEPTH 层） */
+export const noteCatAll = (id: Tag, d = 0): Tag[] => [id, ...(d < MAX_NOTE_DEPTH ? noteCatKids(id).flatMap((k) => noteCatAll(k.id, d + 1)) : [])];
+/** 从最外层写到它：「工作 / 长寿医院」 */
+export function noteCatPath(id: Tag | null | undefined, sep = " / "): string {
+  const names: string[] = [];
+  for (let t = noteCatDef(id); t && names.length < MAX_NOTE_DEPTH; t = noteCatUp(t.id)) names.unshift(t.name);
+  return names.join(sep);
+}
+export const noteCatHtml = (id: Tag | null | undefined) => {
+  const t = noteCatDef(id);
+  return t ? `<span class="tag" style="${tagColor(t.color)}">${esc(noteCatPath(id))}</span>` : "";
+};
+/** 选笔记分类的一排小圆片：子文件夹写全路径 */
+export const noteCatChips = (sel: Tag | null) =>
+  noteCats.map((t) => `<button type="button" class="chip tagged" style="${tagColor(t.color)}" data-tag="${esc(t.id)}" aria-pressed="${sel === t.id}">${esc(noteCatPath(t.id))}</button>`).join("");
 const WD = ["日", "一", "二", "三", "四", "五", "六"];
 
 export const $ = <T extends Element = HTMLElement>(s: string, r: ParentNode = document) => r.querySelector(s) as T;
@@ -72,6 +116,26 @@ export function isLate(r: Reminder, now = new Date()): boolean {
   return !!d && d < now;
 }
 export const timeOf = (s: string) => s.slice(11, 16);
+
+/** 正在做：点了「开始做」、还没完成（需求-1.x 第 45.2 节） */
+export const isRunning = (r: { started_at?: string | null; done: boolean }) => !!r.started_at && !r.done;
+/** 开始做到现在几毫秒 */
+export function runMs(r: { started_at?: string | null }, now = Date.now()): number {
+  const m = r.started_at?.match(/^(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2})(?::(\d{2}))?/);
+  return m ? Math.max(0, now - new Date(+m[1], +m[2] - 1, +m[3], +m[4], +m[5], +(m[6] ?? 0)).getTime()) : 0;
+}
+/** 用了多久：「1 分钟」「25 分钟」「1 小时 20 分」（不到一分钟也算 1 分钟） */
+export function durText(sec: number): string {
+  const m = Math.max(1, Math.floor(sec / 60));
+  return m < 60 ? `${m} 分钟` : `${Math.floor(m / 60)} 小时${m % 60 ? ` ${m % 60} 分` : ""}`;
+}
+/** 计时：「25:12」「1:20:05」 */
+export function clockText(ms: number): string {
+  const s = Math.floor(ms / 1000);
+  const h = Math.floor(s / 3600);
+  const m = Math.floor((s % 3600) / 60);
+  return `${h ? `${h}:${pad(m)}` : m}:${pad(s % 60)}`;
+}
 export const weekdayCn = (d: Date) => "周" + WD[d.getDay()];
 
 /** 今天 / 明天 / 后天 / 昨天 / 11月3日 周二 */

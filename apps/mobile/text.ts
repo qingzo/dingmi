@@ -123,6 +123,11 @@ export const T = {
   notesEmptySub: "点右上角的 + 记一条",
   catEmpty: "这个分类里还没有笔记",
   catEmptySub: "点右上角的 +，就记在这个分类里",
+  picHidden: (n: number, cat: string) => `还有 ${n} 篇「${cat}」没显示`,
+  picSee: "看看",
+  // 电脑上点了「开始做」（需求-1.x 第 45.2 节）
+  running: (used: string) => `正在做 ${used}`,
+  used: (used: string) => `用了 ${used}`,
   back: "返回",
   edit: "编辑",
   changed: (when: string) => `${when} 改过`,

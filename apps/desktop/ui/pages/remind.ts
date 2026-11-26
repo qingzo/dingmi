@@ -8,7 +8,7 @@ import { hasTime, parseLocal } from "../lib/parse";
 import { icon } from "@shared/icons";
 import { cat, type CatMood } from "@shared/mascot";
 import { attachmentSrc, setAttachmentDir, splitSubs, subsLabel } from "@shared/md";
-import { $, addDays, esc, fireAt, fmtDT, isRecurring, parseDT, repeatLabel, setTags, tagDef, tagHtml } from "@shared/util";
+import { $, addDays, durText, esc, fireAt, fmtDT, isRecurring, isRunning, parseDT, repeatLabel, runMs, setTags, tagDef, tagHtml } from "@shared/util";
 import { ring } from "../lib/sound";
 import { remindText as T, whenFull, whenPast, whenShort } from "../text/cards";
 
@@ -74,12 +74,16 @@ function renderCard(r: Reminder) {
   mode = "card";
   cur = r;
   showing = [r];
-  const late = isLate(r);
+  // 正在做的到了 4 小时：问还在不在做（需求-1.x 第 45.2 节）
+  const running = isRunning(r);
+  const late = !running && isLate(r);
   const rec = isRecurring(r.repeat);
   const min = lateMin(r);
-  const when = late
-    ? `<div class="when late">${T.late(timeText(r))}<small>${T.lateAgo(min)}</small></div>`
-    : `<div class="when">${T.ring(timeText(r))}</div>`;
+  const when = running
+    ? `<div class="when">${T.stillWhen(durText(runMs(r) / 1000))}</div>`
+    : late
+      ? `<div class="when late">${T.late(timeText(r))}<small>${T.lateAgo(min)}</small></div>`
+      : `<div class="when">${T.ring(timeText(r))}</div>`;
   const meta = [
     r.urgent ? `<span class="tag" style="--c: var(--danger)">${icon("zap")}${T.urgent}</span>` : "",
     rec ? `<span class="tag" style="--c: var(--tc-purple)">${icon("repeat")}${esc(repeatLabel(r.repeat, r.due_at))}</span>` : "",
@@ -91,18 +95,22 @@ function renderCard(r: Reminder) {
   const next = queue.filter((x) => x.id !== r.id);
   card.classList.toggle("stack", next.length > 0);
   card.innerHTML = `
-    <button class="x" data-act="snooze" title="${esc(T.close(snoozeMin))}" aria-label="${esc(T.snooze(snoozeMin))}">${icon("x")}</button>
+    <button class="x" data-act="${running ? "still" : "snooze"}" title="${esc(running ? T.still : T.close(snoozeMin))}" aria-label="${esc(running ? T.still : T.snooze(snoozeMin))}">${icon("x")}</button>
     <div class="hd">${corner(late ? "worry" : "ring", late)}<div class="m">${when}
-      <div class="title">${esc(r.title)}</div>${detailHtml(r.detail)}</div>
+      <div class="title">${esc(r.title)}${running ? `<span class="ask">${T.stillAsk}</span>` : ""}</div>${detailHtml(r.detail)}</div>
       ${next.length ? `<span class="more">${T.more(next.length)}</span>` : ""}</div>
     ${meta ? `<div class="meta">${meta}</div>` : ""}
     ${note ? `<button class="link" data-note="${note.id}">${icon("notebook-pen")}<span>${esc(note.title || "")}</span><small>${T.openNote}</small></button>${picsHtml(note)}` : ""}
-    <div class="acts">
-      <button class="btn pri" data-act="done">${icon("check")}${rec ? T.doneOnce : T.done}</button>
+    <div class="acts">${
+      running
+        ? `<button class="btn pri" data-act="done">${icon("check")}${T.stillDone}</button>
+      <button class="btn" data-act="still">${T.still}</button>
+      <button class="btn ghost" data-act="drop">${T.stillDrop}</button>`
+        : `<button class="btn pri" data-act="done">${icon("check")}${rec ? T.doneOnce : T.done}</button>
+      <button class="btn go" data-start title="${esc(T.startTip)}">${icon("play")}${T.start}</button>
       <button class="btn" data-act="snooze">${T.snooze(snoozeMin)}</button>
-      <button class="btn" data-act="tomorrow">${T.tomorrow}</button>
-      <button class="btn ghost" data-pick>${T.pick}</button>
-    </div>
+      <button class="btn ghost" data-pick>${T.pick}${icon("chevron-down", "dd")}</button>`
+    }</div>
     ${
       next.length
         ? `<div class="meta next"><span class="plain">${esc(T.next(next.slice(0, 2).map((x) => x.title)))}${next.length > 2 ? " …" : ""}</span>
@@ -141,6 +149,7 @@ function renderPick() {
   const at = (d: Date, h: number, m = 0) => new Date(d.getFullYear(), d.getMonth(), d.getDate(), h, m);
   const tomorrow = addDays(now, 1);
   const monday = addDays(now, ((8 - now.getDay()) % 7) || 7);
+  // 「明天再说」从卡片上挪到这里第一个（卡片上换成了「开始做」，需求-1.x 第 45.2 节）
   const opts: [string, Date][] = [
     [T.quick.half, new Date(now.getTime() + 30 * 60000)],
     [T.quick.hour, new Date(now.getTime() + 60 * 60000)],
@@ -155,7 +164,7 @@ function renderPick() {
   const box = document.createElement("div");
   box.className = "pick";
   box.innerHTML = `<div class="lab">${T.pickLabel}</div>
-    <div class="chips">${opts.map(([l, d]) => `<button class="chip" data-until="${fmtDT(d)}">${l}</button>`).join("")}</div>
+    <div class="chips"><button class="chip" data-act="tomorrow">${T.tomorrow}</button>${opts.map(([l, d]) => `<button class="chip" data-until="${fmtDT(d)}">${l}</button>`).join("")}</div>
     <label class="field pk"><input id="pk-in" autocomplete="off" spellcheck="false" placeholder="${esc(T.pickHint)}"><span class="pv" id="pk-pv"></span></label>
     <div class="acts"><button class="btn pri" id="pk-go" disabled>${T.pickGo}</button><button class="btn ghost" data-back>${T.back}</button></div>`;
   card.insertBefore(box, $("#msg"));
@@ -210,6 +219,35 @@ async function act(action: ReminderAction, until?: string, ids = cur ? [cur.id] 
     return showErr(err);
   }
   await reload();
+}
+
+/** 开始做（需求-1.x 第 45.2 节）：同时只算一条，已经有一条在做的先问那条怎么办 */
+async function start() {
+  if (!cur) return;
+  const r = cur;
+  const other = (await api.listReminders().catch((): Reminder[] => [])).find((x) => isRunning(x) && x.id !== r.id);
+  if (!other) return act("start");
+  card.querySelector(".acts")?.remove();
+  card.querySelector(".meta.next")?.remove();
+  const box = document.createElement("div");
+  box.className = "swap";
+  box.innerHTML = `<p>${esc(T.swapAsk(other.title, durText(runMs(other) / 1000)))}</p>
+    <div class="acts"><button class="btn pri" data-swap="done">${icon("check")}${T.swapDone}</button><button class="btn" data-swap="drop">${T.swapDrop}</button><button class="btn ghost" data-back>${T.swapNo}</button></div>`;
+  box.dataset.other = String(other.id);
+  card.insertBefore(box, $("#msg"));
+  fit();
+}
+
+async function swap(how: "done" | "drop") {
+  const other = Number(card.querySelector<HTMLElement>(".swap")?.dataset.other);
+  if (!cur || !other) return;
+  card.querySelectorAll("button").forEach((x) => (x.disabled = true));
+  try {
+    await api.reminderAction(other, how);
+  } catch (err) {
+    return showErr(err);
+  }
+  await act("start");
 }
 
 /** 卡片上那条从队列里没了、又不是自己点的：别的电脑处理了的话回一句话 */
@@ -316,6 +354,9 @@ card.addEventListener("click", async (e) => {
   const el = e.target as HTMLElement;
   if (mode === "gone") return;
   if (el.closest("[data-pick]")) return renderPick();
+  if (el.closest("[data-start]")) return start();
+  const sw = el.closest<HTMLElement>("[data-swap]");
+  if (sw) return swap(sw.dataset.swap as "done" | "drop");
   if (el.closest("[data-back]")) return render();
   if (el.closest("#pk-go")) return pickGo();
   const quick = el.closest<HTMLElement>("[data-until]");
@@ -341,7 +382,8 @@ document.addEventListener("keydown", (e) => {
     e.preventDefault();
     if (mode === "pick") return render();
     if (mode === "held") return void act("snooze", undefined, showing.map((r) => r.id));
-    return void act("snooze");
+    // 正在做的问还在不在做：Esc 当「还在做」
+    return void act(cur && isRunning(cur) ? "still" : "snooze");
   }
   if (e.key === "Enter" && !onButton) {
     e.preventDefault();

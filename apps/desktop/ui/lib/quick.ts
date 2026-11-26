@@ -1,5 +1,5 @@
 // 一句话直接保存：快捷框和桌面组件共用。一边打字一边预览会被理解成什么，回车后由 AI（或本地规则）拆开存好
-import { api, newNote, type Device, type Note, type Reminder } from "./api";
+import { api, newNote, type Device, type Note, type Reminder, type Settings } from "./api";
 import { guessNoteCat, parseLocal, saveParsed, smartParse, type ParsedItem, type ParsedNote } from "./parse";
 import { friendlyDay, friendlyDT, isRecurring, NO_DATE, repeatLabel } from "@shared/util";
 
@@ -61,12 +61,17 @@ export async function quickSaveAll(v: string, useAI: boolean, devices: Device[],
   return { items: res.items, ...saved, aiFailed: useAI && !asNote && !!res.error };
 }
 
-/** 图片放进笔记（需求-1.x 第 42.6 节）：拆出了笔记就放进第一条；只拆出了提醒，就新建一条笔记（标题同第一条提醒，正文是原话）关联它 */
+/** 提醒加图片时新建的笔记放进哪个分类（需求-1.x 第 45 节）；没设、分类被删了就不分类 */
+export const picCat = (s: Settings | null | undefined) => (s?.pic_cat && s.note_cats.some((t) => t.id === s.pic_cat) ? s.pic_cat : null);
+
+/** 图片放进笔记（需求-1.x 第 42.6 节）：拆出了笔记就放进第一条；只拆出了提醒，就新建一条笔记（标题同第一条提醒，正文是原话）关联它，
+ *  放进「提醒附图」（第 45 节） */
 async function attachPics(saved: { reminders: Reminder[]; notes: Note[] }, v: string, pics: Pic[]) {
   let note = saved.notes[0];
   if (!note) {
     const r = saved.reminders[0];
-    note = await api.saveNote(newNote({ title: r?.title ?? v.split("\n")[0].slice(0, 20), body: v, reminder_id: r?.id ?? null }));
+    const tag = r ? picCat(await api.getSettings().catch(() => null)) : null;
+    note = await api.saveNote(newNote({ title: r?.title ?? v.split("\n")[0].slice(0, 20), body: v, tag, reminder_id: r?.id ?? null }));
     saved.notes.push(note);
   }
   const md: string[] = [];

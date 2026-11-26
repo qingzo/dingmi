@@ -1,6 +1,7 @@
 // 手机网页的周期提醒（代码在 shared/recur.ts，电脑端界面也用它）：和 recur.rs 的测试一样的几组
 import { describe, expect, it } from "vitest";
 import { complete, matches, nextAfter, normalize, overLimit, type Repeat as RepeatRule, type SReminder } from "./model";
+import { clockText, durText, isRunning, runMs } from "@shared/util";
 
 // 叮咪同步的套餐限单个图片 / 文件多大（需求-1.0 第 32.1 节第 5 条）：图片超了压缩，文件超了传不了，自建服务器不限
 describe("套餐限额", () => {
@@ -106,3 +107,24 @@ describe("0.2 加的", () => {
     expect(complete(r, dt("2026-09-25 20:05")).due_at).toBe("2027-09-15 20:00");
   });
 });
+
+// 电脑上点了「开始做」的（需求-1.x 第 45.2 节）：手机上完成也记下用了多久，正在做清掉
+describe("开始做", () => {
+  const base = { due_at: "2026-11-26 15:45", repeat: rep("none"), snoozed_until: "2026-11-26 19:46", done: false } as unknown as SReminder;
+  it("完成时记下用了几秒", () => {
+    const out = complete({ ...base, started_at: "2026-11-26 15:46:10" }, new Date(2026, 10, 26, 16, 11, 10));
+    expect([out.done, out.started_at, out.used_sec, out.snoozed_until]).toEqual([true, null, 1500, null]);
+  });
+  it("没点过开始做的不记", () => {
+    expect(complete({ ...base, used_sec: 60 }, new Date(2026, 10, 26, 16, 0)).used_sec).toBeNull();
+  });
+  it("几个小工具", () => {
+    expect(isRunning({ started_at: "2026-11-26 15:46:10", done: false })).toBe(true);
+    expect(isRunning({ started_at: "2026-11-26 15:46:10", done: true }) || isRunning({ started_at: null, done: false })).toBe(false);
+    expect(runMs({ started_at: "2026-11-26 15:46:10" }, new Date(2026, 10, 26, 15, 47, 15).getTime())).toBe(65000);
+    expect(runMs({ started_at: "2026-11-26 15:46" }, new Date(2026, 10, 26, 15, 47).getTime())).toBe(60000);
+    expect([durText(20), durText(1500), durText(3600), durText(4800)]).toEqual(["1 分钟", "25 分钟", "1 小时", "1 小时 20 分"]);
+    expect([clockText(65000), clockText(4805000)]).toEqual(["1:05", "1:20:05"]);
+  });
+});
+

@@ -8,13 +8,13 @@ import { cat, head, type CatMood } from "@shared/mascot";
 import { detailText, fileSize, highlight, renderMd, setFileInfo, setTodo, snippet, subsLabel, todos } from "@shared/md";
 import { captureDrafts, tableClick, tableInput, tableKey, tableStates, type TableCtx } from "@shared/tables";
 import { STYLES, TEXT, type StyleId } from "@shared/text";
-import { ago, copyText, esc, noteCatChips, noteCatDef, noteCatList, repeatLabel, setNoteCats, setTags, tagChips, tagColor, tagHtml, weekdayCn } from "@shared/util";
+import { ago, copyText, durText, esc, isRunning, noteCatAll, noteCatChips, noteCatDef, noteCatList, noteCatPath, repeatLabel, runMs, setNoteCats, setTags, tagChips, tagColor, tagHtml, weekdayCn } from "@shared/util";
 import { readRepeatExtras, REPEAT_KINDS, repeatExtrasHtml, showRepeatExtras } from "@shared/repeat-edit";
 import { hasTime, parseLocal } from "../desktop/ui/lib/parse";
 import { fileAad, fromB64, open, seal, sealInbox, unlockBox1 } from "./crypto";
 import { hitToReminder, hitWhen, reminderHits, type ParsedReminder } from "./hit";
 import {
-  blankReminder, cleanFileName, complete, dayStr, DEFAULT_NOTE_CATS, DEFAULT_TAGS, extFor, fireAt, fmtMin, isRecurring, isUndated, NO_DATE, MAX_ATTACHMENT, normalize, overLimit, noteTitle, nowSec, parseDT, toggleTodoLine,
+  blankReminder, cleanFileName, complete, dayStr, DEFAULT_NOTE_CATS, DEFAULT_TAGS, PIC_CAT, extFor, fireAt, fmtMin, isRecurring, isUndated, NO_DATE, MAX_ATTACHMENT, normalize, overLimit, noteTitle, nowSec, parseDT, toggleTodoLine,
   undoComplete, uuidv7, type Limits, type Payload, type Repeat, type SAttachment, type SNote, type SShared, type SReminder, type TagDef,
 } from "./model";
 import { getStyle, isDark, mascotOn, onLookChange, setStyle } from "./look";
@@ -293,7 +293,29 @@ function sharedList(field: "tags" | "note_cats", fallback: TagDef[]): TagDef[] {
   }
 }
 const currentTags = () => sharedList("tags", DEFAULT_TAGS);
-const currentNoteCats = () => sharedList("note_cats", DEFAULT_NOTE_CATS);
+
+/** 共用设置里提醒的图片放哪、「全部」里显不显示（需求-1.x 第 45 节）；1.0.12 及以前的电脑传来的没有，按默认：「提醒附图」、不显示 */
+function picSetting(): { cat: string; all: boolean } {
+  try {
+    const s = of("shared").find((x) => x.uid === "settings");
+    const v = s ? JSON.parse(s.value) : {};
+    return { cat: typeof v.pic_cat === "string" ? v.pic_cat : PIC_CAT, all: v.pic_cat_all === true };
+  } catch {
+    return { cat: PIC_CAT, all: false };
+  }
+}
+
+/** 笔记分类。电脑刚升级、还没把「提醒附图」传过来时补上（和电脑上一样），不然那些笔记看着像没分类 */
+function currentNoteCats() {
+  const list = sharedList("note_cats", DEFAULT_NOTE_CATS);
+  return picSetting().cat === PIC_CAT && !list.some((t) => t.id === PIC_CAT) ? [...list, DEFAULT_NOTE_CATS.find((t) => t.id === PIC_CAT)!] : list;
+}
+
+/** 「全部」里不显示的分类 */
+const hiddenCat = () => {
+  const p = picSetting();
+  return !p.all && p.cat && noteCatDef(p.cat) ? p.cat : null;
+};
 
 function todayData() {
   const tk = dayStr(new Date());
@@ -382,16 +404,20 @@ const banner = (b: string, text: string, extra = "") => `<div class="banner err"
 function remRow(r: SReminder, o: { done?: boolean; short?: boolean } = {}) {
   const f = fireAt(r);
   // 待办不会过点；只有日期的那天过完才算
-  const late = !o.done && !isUndated(r) && (r.allday ? f.slice(0, 10) < dayStr(new Date()) : (parseDT(f) ?? new Date()) < new Date());
+  const late = !o.done && !isRunning(r) && !isUndated(r) && (r.allday ? f.slice(0, 10) < dayStr(new Date()) : (parseDT(f) ?? new Date()) < new Date());
   const rec = isRecurring(r.repeat);
   const day = () => {
     const n = dayDiff(parseDT(f) ?? new Date());
     return n === 0 ? T.allDay : whenText(f).replace(/\s*\d{2}:\d{2}$/, "");
   };
+  // 电脑上点了「开始做」的（需求-1.x 第 45.2 节）：写正在做几分钟；做完写用了多久
+  const running = !o.done && isRunning(r);
   const time = o.done
     ? isUndated(r) ? T.doneAt("").trim() : T.doneAt(whenText(r.completed_at ?? r.last_done_at ?? f))
-    : isUndated(r) ? "" : r.allday ? day() : o.short ? f.slice(11, 16) : whenText(f);
-  const sub = [detailText(r.detail), subsLabel(r.detail) && T.subs(subsLabel(r.detail)), !o.done && r.snooze_count ? T.snoozed(r.snooze_count) : ""].filter(Boolean).join(" · ");
+    : running ? T.running(durText(runMs(r) / 1000)) : isUndated(r) ? "" : r.allday ? day() : o.short ? f.slice(11, 16) : whenText(f);
+  const sub = [detailText(r.detail), subsLabel(r.detail) && T.subs(subsLabel(r.detail)), !o.done && !running && r.snooze_count ? T.snoozed(r.snooze_count) : "", o.done && r.used_sec ? T.used(durText(r.used_sec)) : ""]
+    .filter(Boolean)
+    .join(" · ");
   const tags = [
     r.urgent ? `<span class="tag" style="--c:var(--danger)">${T.urgent}</span>` : "",
     r.vague && !o.done ? `<span class="tag" style="${tagColor("amber")}" title="${T.vagueTip}">${T.vague}</span>` : "",
@@ -401,7 +427,7 @@ function remRow(r: SReminder, o: { done?: boolean; short?: boolean } = {}) {
   return `<div class="it${o.done ? " done" : ""}${S.flash.has(r.uid) ? " flash" : ""}" data-rem="${r.uid}">
     <button class="task${o.done ? " on" : ""}" data-chk="${r.uid}" data-done="${o.done ? 1 : 0}" aria-label="${o.done ? T.uncomplete : T.complete}">${icon("check")}</button>
     <span class="t"><span class="tt">${esc(r.title)}</span>${tags ? `<span class="tags">${tags}</span>` : ""}${sub ? `<small>${esc(sub)}</small>` : ""}</span>
-    <span class="tm${late ? " late" : ""}">${esc(time)}</span>
+    <span class="tm${late ? " late" : ""}${running ? " run" : ""}">${esc(time)}</span>
   </div>`;
 }
 
@@ -492,19 +518,29 @@ function noteCatRow() {
   const none = all.filter((n) => !noteCatDef(n.tag)).length;
   const items: [string, string, string][] = [
     ["all", T.all, ""],
-    ...noteCatList().map((t) => [t.id, t.name, tagColor(t.color)] as [string, string, string]),
+    ...noteCatList().map((t) => [t.id, noteCatPath(t.id), tagColor(t.color)] as [string, string, string]),
     ...(none && none < all.length ? [["none", T.noCat, ""] as [string, string, string]] : []),
   ];
   if (items.length < 2) return "";
+  const hide = hiddenCat();
   return `<div class="chips">${items
-    .map(([id, name, color]) => `<button class="chip${color ? " tagged" : ""}" data-nc="${esc(id)}" ${color ? `style="${color}"` : ""} aria-pressed="${S.nCat === id}">${esc(name)}</button>`)
+    .map(
+      ([id, name, color]) =>
+        `<button class="chip${color ? " tagged" : ""}" data-nc="${esc(id)}" ${color ? `style="${color}"` : ""} aria-pressed="${S.nCat === id}">${esc(name)}${id === hide ? `<small>${all.filter((n) => n.tag === id).length}</small>` : ""}</button>`,
+    )
     .join("")}</div>`;
 }
 
 function noteList() {
   const q = S.q.trim();
   const ql = q.toLowerCase();
-  const all = notes().filter((n) => S.nCat === "all" || (S.nCat === "none" ? !noteCatDef(n.tag) : n.tag === S.nCat));
+  // 「全部」里不显示提醒附图（搜的时候照样搜得到），最后说一声还有几篇
+  const hide = !q && S.nCat === "all" ? hiddenCat() : null;
+  const hidden = hide ? notes().filter((n) => n.tag === hide).length : 0;
+  const more = hidden ? `<p class="nbhid">${esc(T.picHidden(hidden, noteCatDef(hide)!.name))}<button class="lnk" data-nc="${esc(hide!)}">${T.picSee}</button></p>` : "";
+  // 选了文件夹：连下面几层一起（需求-1.x 第 45.3 节）
+  const inFolder = S.nCat === "all" || S.nCat === "none" ? [] : noteCatAll(S.nCat);
+  const all = notes().filter((n) => (S.nCat === "all" ? n.tag !== hide : S.nCat === "none" ? !noteCatDef(n.tag) : !!n.tag && inFolder.includes(n.tag)));
   const list = q ? all.filter((n) => n.title.toLowerCase().includes(ql) || n.body.toLowerCase().includes(ql)) : all;
   const rows = list
     .slice(0, 300)
@@ -515,8 +551,9 @@ function noteList() {
         <small>${inBody ? T.inBody : ""}${snippet(n.body, q, 60) || T.blank}</small><span class="meta">${esc(ago(n.updated_at))}</span></button>`;
     })
     .join("");
-  if (rows) return `${q ? `<div class="grp">${T.found(list.length)}</div>` : ""}<div class="card">${rows}</div>`;
+  if (rows) return `${q ? `<div class="grp">${T.found(list.length)}</div>` : ""}<div class="card">${rows}</div>${more}`;
   if (q) return empty("normal", TEXT.notFound(mascotOn()));
+  if (more) return more;
   if (S.nCat !== "all" && notes().length) return empty("normal", T.catEmpty, T.catEmptySub);
   return empty("normal", T.notesEmpty, T.notesEmptySub);
 }
@@ -812,7 +849,7 @@ function openReminder(r: SReminder, isNew = false) {
       detail: $<HTMLTextAreaElement>("#ed-detail", s).value.trim(),
       due_at: fmtMin(due),
       repeat,
-      snoozed_until: null,
+      snoozed_until: isRunning(r) ? (r.snoozed_until ?? null) : null,
       done: keepDone,
       completed_at: keepDone ? r.completed_at : null,
       tag: tagEl?.dataset.tag ?? null,
@@ -922,7 +959,7 @@ function fillDoc(n: SNote) {
   const rem = n.reminder_uid ? findR(n.reminder_uid) : undefined;
   const c = noteCatDef(n.tag);
   doc.innerHTML = `<h2>${highlight(esc(n.title), q)}</h2>
-    <div class="meta">${c ? `<span class="tag" style="${tagColor(c.color)}">${esc(c.name)}</span>` : ""}${esc(T.changed(ago(n.updated_at)))}</div>
+    <div class="meta">${c ? `<span class="tag" style="${tagColor(c.color)}">${esc(noteCatPath(c.id))}</span>` : ""}${esc(T.changed(ago(n.updated_at)))}</div>
     <div class="md">${n.body.trim() ? renderMd(n.body, q, undefined, tableStates(n.uid)) : `<p class="blank">${T.blankNote}</p>`}</div>
     ${rem ? `<div class="linked">${icon("bell")}${T.linked}<a class="lnk" data-open-rem="${rem.uid}">${esc(rem.title)}</a></div>` : ""}
     <div class="foot"><button class="btn danger" id="nd-del">${icon("trash-2")}${T.delNote}</button></div>`;

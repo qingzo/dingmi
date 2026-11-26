@@ -150,8 +150,9 @@ fn sub_dir(mime: &str) -> &'static str {
     }
 }
 
-/// 正文里的 `](att:文件名)` 改成指向 附件/ 的相对路径（笔记在 笔记/<分类>/ 下，往上两层）；别的一个字都不动
-fn link_attachments(body: &str, subs: &HashMap<String, &'static str>) -> String {
+/// 正文里的 `](att:文件名)` 改成指向 附件/ 的相对路径（笔记在 笔记/<文件夹>/ 下，文件夹有 levels 层，再往上一层是 笔记/）；别的一个字都不动
+fn link_attachments(body: &str, subs: &HashMap<String, &'static str>, levels: usize) -> String {
+    let up = "../".repeat(levels + 1);
     const MARK: &str = "](att:";
     let mut out = String::with_capacity(body.len());
     let mut rest = body;
@@ -162,7 +163,7 @@ fn link_attachments(body: &str, subs: &HashMap<String, &'static str>) -> String 
         let file = &after[..len];
         if len > 0 && after[len..].starts_with(')') {
             let sub = subs.get(file).copied().unwrap_or(if rest[..i].contains("![") { "images" } else { "files" });
-            out.push_str(&format!("../../{ATT_DIR}/{sub}/{file}"));
+            out.push_str(&format!("{up}{ATT_DIR}/{sub}/{file}"));
         } else {
             out.push_str("att:");
             out.push_str(file);
@@ -174,7 +175,9 @@ fn link_attachments(body: &str, subs: &HashMap<String, &'static str>) -> String 
 }
 
 /// 一条笔记的 Markdown：文件头（标题、时间、分类、关联的提醒），再是原样的正文，只改图片和文件的路径
-pub fn note_markdown(n: &Note, cat: Option<&str>, reminder: Option<&Reminder>, subs: &HashMap<String, &'static str>) -> String {
+/// cat 是文件夹的路径（「工作/长寿医院」），没分类是 None；levels 是笔记放在 笔记/ 下几层（没分类的在 未分类/，算一层）。
+/// 层数单独给：文件夹名里本来就可能有「/」，不能从 cat 数
+pub fn note_markdown(n: &Note, cat: Option<&str>, levels: usize, reminder: Option<&Reminder>, subs: &HashMap<String, &'static str>) -> String {
     let mut head = vec!["---".to_string()];
     if !n.title.trim().is_empty() {
         head.push(format!("title: {}", yaml(&n.title)));
@@ -188,7 +191,7 @@ pub fn note_markdown(n: &Note, cat: Option<&str>, reminder: Option<&Reminder>, s
         head.push(format!("reminder: {}", yaml(&format!("{} {}", when_text(r), r.title))));
     }
     head.push("---".into());
-    format!("{}\n\n{}\n", head.join("\n"), link_attachments(&n.body, subs).trim_end())
+    format!("{}\n\n{}\n", head.join("\n"), link_attachments(&n.body, subs, levels).trim_end())
 }
 
 const WD: [&str; 8] = ["", "一", "二", "三", "四", "五", "六", "日"];
@@ -483,7 +486,7 @@ fn write_zip(
         }
     };
 
-    // 笔记：按分类分文件夹，同一个文件夹里重名的加 (2)
+    // 笔记：按分类分文件夹（笔记文件夹有几层就建几层子目录，需求-1.x 第 45.3 节），同一个文件夹里重名的加 (2)
     let subs: HashMap<String, &'static str> = atts.iter().map(|a| (a.file.clone(), sub_dir(&a.mime))).collect();
     let by_id: HashMap<i64, &Reminder> = reminders.iter().map(|r| (r.id, r)).collect();
     let mut used: HashMap<String, HashSet<String>> = HashMap::new();
@@ -491,12 +494,14 @@ fn write_zip(
     let mut ordered: Vec<&Note> = notes.iter().collect();
     ordered.sort_by_key(|n| n.id);
     for n in ordered {
-        let cat = s.note_cats.iter().find(|t| n.tag.as_deref() == Some(t.id.as_str()));
-        let folder = cat.map(|t| safe_name(&t.name)).unwrap_or_else(|| "未分类".into());
+        let path = n.tag.as_deref().map(|id| settings::note_cat_path(&s.note_cats, id)).filter(|p| !p.is_empty());
+        let cat = path.as_ref().map(|p| p.join("/"));
+        let levels = path.as_ref().map_or(1, |p| p.len());
+        let folder = path.as_ref().map(|p| p.iter().map(|x| safe_name(x)).collect::<Vec<_>>().join("/")).unwrap_or_else(|| "未分类".into());
         let names = used.entry(folder.to_lowercase()).or_default();
         let stem = unique(note_file_stem(n), names);
         let rem = n.reminder_id.and_then(|id| by_id.get(&id).copied());
-        let md = note_markdown(n, cat.map(|t| t.name.as_str()), rem, &subs);
+        let md = note_markdown(n, cat.as_deref(), levels, rem, &subs);
         put(&mut z, &format!("笔记/{folder}/{stem}.md"), md.as_bytes(), text)?;
         tick(&mut done);
     }
@@ -656,18 +661,25 @@ pub(crate) mod tests {
             ..Default::default()
         };
         let r = Reminder { title: "周四评审".into(), due_at: "2026-11-06 15:00".into(), ..Default::default() };
-        let md = note_markdown(&n, Some("资料"), Some(&r), &HashMap::new());
+        let md = note_markdown(&n, Some("资料"), 1, Some(&r), &HashMap::new());
         assert_eq!(
             md,
             "---\ntitle: 周四评审要带的材料\ncreated: 2026-11-03 14:20\nupdated: 2026-11-05 09:12\ncategory: 资料\nreminder: 2026-11-06 15:00 周四评审\n---\n\n- [ ] 方案\n| a | b<br>c |\n"
         );
         // 没分类、没关联提醒的不写这两行；会被 YAML 误会的标题加引号
         let n = Note { title: "预算: 20万 #急".into(), created_at: "2026-11-03 14:20:05".into(), updated_at: "2026-11-03 14:20:05".into(), ..Default::default() };
-        let md = note_markdown(&n, None, None, &HashMap::new());
+        let md = note_markdown(&n, None, 1, None, &HashMap::new());
         assert!(md.starts_with("---\ntitle: \"预算: 20万 #急\"\ncreated: 2026-11-03 14:20\nupdated: 2026-11-03 14:20\n---\n"));
         assert_eq!(yaml("true"), "\"true\"");
         assert_eq!(yaml("2026"), "\"2026\"");
         assert_eq!(yaml("周报：本周"), "周报：本周");
+        // 笔记文件夹有两层（需求-1.x 第 45.3 节）：写全路径，附件往上多走一层
+        let n = Note { title: "口径".into(), body: "![](att:a.png)".into(), created_at: "2026-11-26 10:00:00".into(), updated_at: "2026-11-26 10:00:00".into(), ..Default::default() };
+        let md = note_markdown(&n, Some("工作/长寿医院"), 2, None, &HashMap::new());
+        assert!(md.contains("category: 工作/长寿医院\n") && md.contains("![](../../../附件/images/a.png)"), "{md}");
+        // 文件夹名里本来就有「/」（导出时换成空格，还是一层）
+        let md = note_markdown(&n, Some("A/B"), 1, None, &HashMap::new());
+        assert!(md.contains("![](../../附件/images/a.png)"), "{md}");
     }
 
     #[test]
@@ -675,7 +687,7 @@ pub(crate) mod tests {
         let subs = HashMap::from([("a.png".to_string(), "images"), ("c.pdf".to_string(), "files")]);
         let body = "看这张\n![](att:a.png)\n  ![说明](att:b.jpg)  \n![](https://x/y.png)\n[报价.pdf](att:c.pdf)\n文字里也有 ![](att:a.png) 一张\n[网址](https://x)\n[坏的](att:)";
         assert_eq!(
-            link_attachments(body, &subs),
+            link_attachments(body, &subs, 1),
             "看这张\n![](../../附件/images/a.png)\n  ![说明](../../附件/images/b.jpg)  \n![](https://x/y.png)\n[报价.pdf](../../附件/files/c.pdf)\n文字里也有 ![](../../附件/images/a.png) 一张\n[网址](https://x)\n[坏的](att:)"
         );
     }

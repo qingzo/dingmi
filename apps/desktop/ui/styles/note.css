@@ -71,6 +71,8 @@ body { background: var(--bg); overflow: hidden; }
 /* 小菜单（分类、更多） */
 .nmenu { position: fixed; z-index: 60; animation: enter var(--t-mid) var(--ease) both; }
 .nmenu .mi { cursor: pointer; }
+/* 笔记文件夹按层缩进（需求-1.x 第 45.3 节） */
+.nmenu .mi[data-cat] { padding-left: calc(8px + var(--d, 0) * 14px); }
 .nmenu .mi .lucide:last-child:not(:first-child) { margin-left: auto; color: var(--accent-ink); }
 .dialog .keys { margin: 0; padding-left: 18px; color: var(--ink-2); font-size: calc(12.5px * var(--fs)); line-height: 1.8; }
 .scrim .dialog { max-width: 520px; }

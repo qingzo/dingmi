@@ -1,6 +1,6 @@
 //! 调用 OpenAI 兼容的对话接口（默认 DeepSeek）。
 
-use crate::settings::{Settings, TagDef};
+use crate::settings::{Settings, TagDef, PIC_CAT};
 use serde_json::{json, Value};
 use std::time::Duration;
 
@@ -93,14 +93,18 @@ const PARSE_PROMPT: &str = r#"你是一个提醒和笔记助手。用户会随�
 - title 简短自然，去掉"提醒我""记得"这类词和时间说法，也不要留下多余的空格和标点。不要编造用户没说的信息。
 - 如果给了"用户的电脑"列表，而用户说了在哪里提醒（"到公司提醒我""回家后提醒""在家里电脑上提醒"），on 填对应的电脑名，必须从列表里原样选；没说地点就是空数组。title 里不要保留这类地点说法。事情本身带着地点的（"明天去公司开会""下午回家做饭"）不是在说在哪里提醒，on 是空数组，标题照原样留着"去公司""回家"。"#;
 
-/// 拆分用的提示词，分类换成用户自己设的：提醒用提醒分类，笔记用笔记分类
+/// 拆分用的提示词，分类换成用户自己设的：提醒用提醒分类，笔记用笔记分类。
+/// 「提醒附图」不给 AI 选：只放提醒加图片时自动建的笔记（需求-1.x 第 45 节）
 pub fn parse_prompt(tags: &[TagDef], note_cats: &[TagDef]) -> String {
+    let note_cats: Vec<TagDef> = note_cats.iter().filter(|t| t.id != PIC_CAT).cloned().collect();
+    let note_cats = note_cats.as_slice();
     let ids = |list: &[TagDef]| list.iter().map(|t| t.id.as_str()).chain(["null"]).collect::<Vec<_>>().join("|");
     let rule = |what: &str, list: &[TagDef]| {
         if list.is_empty() {
             format!("- 用户没有设{what}分类，{what}的 tag 一律 null。")
         } else {
-            let names: Vec<String> = list.iter().map(|t| format!("{}={}", t.name, t.id)).collect();
+            // 笔记文件夹写全路径（工作/长寿医院=id），AI 才知道是哪一个（需求-1.x 第 45.3 节）
+            let names: Vec<String> = list.iter().map(|t| format!("{}={}", crate::settings::note_cat_path(list, &t.id).join("/"), t.id)).collect();
             format!("- {what}的 tag 从用户的{what}分类里选最贴切的，填 id（名字=id）：{}。都不合适就 null。", names.join("，"))
         }
     };
@@ -160,7 +164,7 @@ mod tests {
     #[test]
     fn prompt_uses_own_tags() {
         let mut tags = default_tags();
-        tags.push(TagDef { id: "tx1".into(), name: "学习".into(), color: "green".into(), sound: String::new() });
+        tags.push(TagDef { id: "tx1".into(), name: "学习".into(), color: "green".into(), sound: String::new(), parent: None });
         let p = parse_prompt(&tags, &default_note_cats());
         assert!(p.contains(r#""tag":"work|life|health|like|cycle|tx1|null""#));
         assert!(p.contains("学习=tx1"));
